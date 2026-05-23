@@ -1,4 +1,4 @@
-﻿export const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+export const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 export const MESES_FULL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 export const CALLES = ["AMADA","BALVINA","MARBELLA","MANUELA","VIRGINIA"];
 
@@ -6,16 +6,24 @@ export function calcDeuda(r) {
   let total = 0;
   const pagos25 = r.pagos25 || {};
   const pagos26 = r.pagos26 || {};
+
   for (let m = 0; m < 12; m++) {
     if (pagos25[m] === "pendiente") total += 350;
   }
   total += Number(r.deuda_extra || r.deudaExtra || 0);
+
   const now = new Date();
   const maxM = now.getFullYear() >= 2026 ? now.getMonth() : 0;
   for (let m = 0; m < maxM; m++) {
     if (pagos26[m] === "pendiente") total += 400;
   }
   return total;
+}
+
+export function statusOf(deuda) {
+  if (deuda <= 0)   return "corriente";
+  if (deuda <= 700) return "leve";
+  return "moroso";
 }
 
 export function fmtMXN(n) {
@@ -32,7 +40,8 @@ export function parseVal(v) {
   return isNaN(n) ? "pendiente" : n;
 }
 
-export function parseExcelWorkbook(workbook, XLSX) {
+export function parseExcelWorkbook(workbook) {
+  const XLSX = window.XLSX || globalThis.XLSX;
   const result = [];
   for (const rawName of workbook.SheetNames) {
     const name = rawName.trim().toUpperCase();

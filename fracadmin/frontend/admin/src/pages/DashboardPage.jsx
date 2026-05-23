@@ -1,67 +1,144 @@
 import { useEffect, useState } from "react";
 import api from "../lib/api";
 import { fmtMXN } from "../lib/helpers";
-
-function MetricCard({ label, value, sub, color }) {
-  const colors = {
-    blue:  { bg: "var(--blue-bg)",  val: "var(--blue)" },
-    red:   { bg: "var(--red-bg)",   val: "var(--red)" },
-    green: { bg: "var(--green-bg)", val: "var(--green)" },
-    amber: { bg: "var(--amber-bg)", val: "var(--amber)" },
-  };
-  const c = colors[color] || colors.blue;
-  return (
-    <div className="rounded-xl p-4" style={{ background: c.bg }}>
-      <p className="text-xs mb-1" style={{ color: "var(--text2)" }}>{label}</p>
-      <p className="text-3xl font-semibold" style={{ color: c.val }}>{value}</p>
-      {sub && <p className="text-xs mt-1" style={{ color: "var(--text3)" }}>{sub}</p>}
-    </div>
-  );
-}
+import { useNavigate } from "react-router-dom";
 
 export default function DashboardPage() {
   const [data, setData] = useState(null);
+  const [morosos, setMorosos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    api.get("/api/admin/dashboard")
-      .then(r => setData(r.data))
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.get("/api/admin/dashboard"),
+      api.get("/api/admin/morosos"),
+    ]).then(([d, m]) => {
+      setData(d.data);
+      setMorosos(m.data);
+    }).catch(console.error).finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="p-8 text-gray-400">Cargando métricas...</div>;
-  if (!data)   return <div className="p-8 text-red-500">Error al cargar datos</div>;
+  if (loading) return <div className="empty"><div className="icon">📊</div><p>Cargando datos...</p></div>;
+  if (!data) return (
+    <div style={{ padding: "2rem" }}>
+      <div className="empty">
+        <div className="icon">📊</div>
+        <p>Aún no hay datos cargados.<br />Importa tu Excel para ver el resumen del fraccionamiento.</p>
+        <button className="btn primary" onClick={() => navigate("/carga")}>Cargar datos →</button>
+      </div>
+    </div>
+  );
+
+  // Deuda por calle
+  const calles = [...new Set(morosos.map(r => r.calle))].sort();
+  const deudaPorCalle = calles.map(c => ({
+    calle: c,
+    total: morosos.filter(r => r.calle === c).reduce((s, r) => s + Number(r.deuda), 0),
+  })).sort((a, b) => b.total - a.total);
+  const maxDeuda = deudaPorCalle[0]?.total || 1;
+
+  // Top 5 morosos
+  const top5 = [...morosos].sort((a, b) => b.deuda - a.deuda).slice(0, 5);
 
   const pct = data.totalResidentes ? Math.round(data.morosos / data.totalResidentes * 100) : 0;
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-semibold mb-1">Dashboard</h1>
-      <p className="text-sm mb-6" style={{ color: "var(--text2)" }}>
-        Resumen general del fraccionamiento
-      </p>
+    <div style={{ padding: "2rem", flex: 1 }}>
+      <div className="page-title">Resumen general</div>
+      <div className="page-sub">
+        {data.totalResidentes} residentes · {data.morosos} morosos ({pct}%) · Deuda total {fmtMXN(data.totalDeuda)}
+      </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
-        <MetricCard label="Total residentes" value={data.totalResidentes} color="blue" />
-        <MetricCard label="Morosos" value={data.morosos} sub={`${pct}% del total`} color="red" />
-        <MetricCard label="Al corriente" value={data.alCorriente} color="green" />
-        <MetricCard label="Deuda total" value={fmtMXN(data.totalDeuda)} sub="MXN acumulado" color="amber" />
-        <MetricCard label="Total recaudado" value={fmtMXN(data.totalRecaudado)} sub="Pagos aprobados" color="green" />
-        <MetricCard label="Pagos pendientes" value={data.pagosPendientes} sub="Por revisar" color="amber" />
+      <div className="metrics">
+        <div className="metric blue">
+          <label>Total residentes</label>
+          <div className="val">{data.totalResidentes}</div>
+        </div>
+        <div className="metric red">
+          <label>Morosos</label>
+          <div className="val">{data.morosos}</div>
+          <div className="sub">{pct}% del total</div>
+        </div>
+        <div className="metric green">
+          <label>Al corriente</label>
+          <div className="val">{data.alCorriente}</div>
+        </div>
+        <div className="metric amber">
+          <label>Deuda total</label>
+          <div className="val" style={{ fontSize: 20 }}>{fmtMXN(data.totalDeuda)}</div>
+        </div>
+        <div className="metric green">
+          <label>Recaudado</label>
+          <div className="val" style={{ fontSize: 20 }}>{fmtMXN(data.totalRecaudado)}</div>
+          <div className="sub">Pagos aprobados</div>
+        </div>
+        {data.pagosPendientes > 0 && (
+          <div className="metric amber">
+            <label>Pagos por revisar</label>
+            <div className="val">{data.pagosPendientes}</div>
+            <div className="sub">Pendientes de aprobación</div>
+          </div>
+        )}
+      </div>
+
+      <div className="two-col">
+        <div className="card">
+          <div className="card-header"><h3>Deuda por calle</h3></div>
+          <div className="card-body">
+            {deudaPorCalle.map(({ calle, total }) => (
+              <div className="bar-row" key={calle}>
+                <div className="bar-label">
+                  <span>{calle}</span>
+                  <span>{fmtMXN(total)}</span>
+                </div>
+                <div className="bar-track">
+                  <div className="bar-fill" style={{ width: `${(total / maxDeuda) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-header"><h3>Top morosos</h3></div>
+          <div style={{ overflow: "hidden", borderRadius: "0 0 12px 12px" }}>
+            {top5.length === 0 ? (
+              <div style={{ padding: "2rem", textAlign: "center", color: "var(--text2)", fontSize: 13 }}>
+                🎉 Sin morosos
+              </div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Residente</th>
+                    <th>Calle</th>
+                    <th style={{ textAlign: "right" }}>Deuda</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {top5.map(r => (
+                    <tr key={r.id}>
+                      <td style={{ fontWeight: 500 }}>{r.residente.split("/")[0].trim()}</td>
+                      <td style={{ color: "var(--text2)" }}>{r.calle}</td>
+                      <td className="right" style={{ fontWeight: 600, color: "var(--red)" }}>{fmtMXN(r.deuda)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
       </div>
 
       {data.pagosPendientes > 0 && (
-        <div className="rounded-xl border p-5 flex items-center gap-4"
-             style={{ background: "var(--amber-bg)", borderColor: "#F6D7A3" }}>
-          <span className="text-2xl">📋</span>
+        <div className="alert amber" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 20 }}>📋</span>
           <div>
-            <p className="font-medium text-sm" style={{ color: "var(--amber)" }}>
-              Tienes {data.pagosPendientes} pago{data.pagosPendientes > 1 ? "s" : ""} pendiente{data.pagosPendientes > 1 ? "s" : ""} de revisar
-            </p>
-            <p className="text-xs mt-0.5" style={{ color: "var(--text2)" }}>
-              Ve a la sección <strong>Pagos</strong> para aprobar o rechazar cada comprobante.
-            </p>
+            Tienes <strong>{data.pagosPendientes}</strong> pago{data.pagosPendientes > 1 ? "s" : ""} pendiente{data.pagosPendientes > 1 ? "s" : ""} de revisar.{" "}
+            <button onClick={() => navigate("/pagos")} style={{ color: "var(--amber)", fontWeight: 600, background: "none", border: "none", cursor: "pointer", textDecoration: "underline", fontSize: 13 }}>
+              Ir a Pagos →
+            </button>
           </div>
         </div>
       )}
