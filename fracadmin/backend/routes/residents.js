@@ -1,0 +1,127 @@
+const router = require("express").Router();
+const pool   = require("../db/pool");
+const requireAuth = require("../middleware/requireAuth");
+
+// GET /api/residents — lista todos (admin)
+router.get("/", requireAuth, async (req, res) => {
+  try {
+    const { calle, search, status } = req.query;
+    let query = "SELECT * FROM residents WHERE TRUE";
+    const params = [];
+
+    if (calle) {
+      params.push(calle);
+      query += ` AND calle = $${params.length}`;
+    }
+    if (search) {
+      params.push(`%${search}%`);
+      query += ` AND residente ILIKE $${params.length}`;
+    }
+
+    query += " ORDER BY calle, mza, lote";
+    const { rows } = await pool.query(query, params);
+    res.json(rows);
+  } catch (err) {
+    console.error("[residents GET]", err.message);
+    res.status(500).json({ error: "Error al obtener residentes" });
+  }
+});
+
+// GET /api/residents/search?q=  — búsqueda pública para autocompletar en formulario
+router.get("/search", async (req, res) => {
+  const { q } = req.query;
+  if (!q || q.length < 2) return res.json([]);
+  try {
+    const { rows } = await pool.query(`
+      SELECT id, calle, lote, mza, residente, telefono
+      FROM residents
+      WHERE residente ILIKE $1
+         OR (calle || ' ' || lote) ILIKE $1
+      ORDER BY calle, lote
+      LIMIT 10
+    `, [`%${q}%`]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: "Error en búsqueda" });
+  }
+});
+
+// GET /api/residents/by-location?calle=&lote=&mza=  — autocompletar exacto
+router.get("/by-location", async (req, res) => {
+  const { calle, lote, mza } = req.query;
+  if (!calle || !lote) return res.json(null);
+  try {
+    const { rows } = await pool.query(`
+      SELECT id, calle, lote, mza, residente, telefono,
+             pagos25, pagos26, deuda_extra
+      FROM residents
+      WHERE LOWER(TRIM(calle)) = LOWER(TRIM($1))
+        AND LOWER(TRIM(lote))  = LOWER(TRIM($2))
+        AND ($3::text IS NULL OR LOWER(TRIM(mza)) = LOWER(TRIM($3)))
+      LIMIT 1
+    `, [calle, lote, mza || null]);
+    res.json(rows[0] || null);
+  } catch (err) {
+    res.status(500).json({ error: "Error en búsqueda" });
+  }
+});
+
+// POST /api/residents/import — importar array desde Excel (admin)
+router.post("/import", requireAuth, async (req, res) => {
+  const { residents } = req.body;
+  if (!Array.isArray(residents) || residents.length === 0)
+    return res.status(400).json({ error: "Se requiere un array de residentes" });
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    let inserted = 0, updated = 0;
+    for (const r of residents) {
+      const { rows } = await client.query(`
+        INSERT INTO residents (id, calle, lote, mza, residente, pagos25, pagos26, deuda_extra)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (id) DO UPDATE SET
+          calle       = EXCLUDED.calle,
+          lote        = EXCLUDED.lote,
+          mza         = EXCLUDED.mza,
+          residente   = EXCLUDED.residente,
+          pagos25     = EXCLUDED.pagos25,
+          pagos26     = EXCLUDED.pagos26,
+          deuda_extra = EXCLUDED.deuda_extra,
+          updated_at  = NOW()
+        RETURNING (xmax = 0) AS inserted
+      `, [r.id, r.calle, r.lote, r.mza, r.residente,
+          JSON.stringify(r.pagos25), JSON.stringify(r.pagos26),
+          r.deudaExtra || 0]);
+
+      if (rows[0].inserted) inserted++; else updated++;
+    }
+
+    await client.query("COMMIT");
+    res.json({ ok: true, inserted, updated, total: residents.length });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("[residents/import]", err.message);
+    res.status(500).json({ error: "Error al importar residentes" });
+  } finally {
+    client.release();
+  }
+});
+
+// PATCH /api/residents/:id/telefono — guardar teléfono cuando un residente envía formulario
+router.patch("/:id/telefono", async (req, res) => {
+  const { telefono } = req.body;
+  if (!telefono) return res.status(400).json({ error: "Teléfono requerido" });
+  try {
+    await pool.query(
+      "UPDATE residents SET telefono = $1, updated_at = NOW() WHERE id = $2",
+      [telefono, req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Error al actualizar teléfono" });
+  }
+});
+
+module.exports = router;
