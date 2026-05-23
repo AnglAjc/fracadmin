@@ -1,4 +1,4 @@
-require("dotenv").config({ path: "../.env" });
+﻿require("dotenv").config();
 const pool = require("./pool");
 
 async function migrate() {
@@ -6,7 +6,6 @@ async function migrate() {
   try {
     await client.query("BEGIN");
 
-    // ── Tabla de administradores ───────────────────────────────
     await client.query(`
       CREATE TABLE IF NOT EXISTS admins (
         id          SERIAL PRIMARY KEY,
@@ -17,8 +16,6 @@ async function migrate() {
       )
     `);
 
-    // ── Tabla de residentes ────────────────────────────────────
-    // Importados desde el Excel; son la fuente de verdad de quién vive aquí
     await client.query(`
       CREATE TABLE IF NOT EXISTS residents (
         id          VARCHAR(100) PRIMARY KEY,
@@ -35,8 +32,6 @@ async function migrate() {
       )
     `);
 
-    // ── Tabla de pagos enviados por residentes ─────────────────
-    // Cada formulario enviado desde la vista de residente
     await client.query(`
       CREATE TABLE IF NOT EXISTS payment_submissions (
         id            SERIAL PRIMARY KEY,
@@ -52,7 +47,6 @@ async function migrate() {
         comprobante_url TEXT,
         notas         TEXT,
         status        VARCHAR(30)  NOT NULL DEFAULT 'pendiente',
-        -- pendiente | aprobado | rechazado
         reviewed_by   INTEGER REFERENCES admins(id),
         reviewed_at   TIMESTAMPTZ,
         rejection_reason TEXT,
@@ -62,19 +56,18 @@ async function migrate() {
       )
     `);
 
-    // ── Índices ────────────────────────────────────────────────
     await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_submissions_status     ON payment_submissions(status);
-      CREATE INDEX IF NOT EXISTS idx_submissions_resident   ON payment_submissions(resident_id);
-      CREATE INDEX IF NOT EXISTS idx_submissions_created    ON payment_submissions(created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_residents_calle        ON residents(calle);
+      CREATE INDEX IF NOT EXISTS idx_submissions_status   ON payment_submissions(status);
+      CREATE INDEX IF NOT EXISTS idx_submissions_resident ON payment_submissions(resident_id);
+      CREATE INDEX IF NOT EXISTS idx_submissions_created  ON payment_submissions(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_residents_calle      ON residents(calle);
     `);
 
     await client.query("COMMIT");
-    console.log("✓ Migración completada");
+    console.log("Migracion completada");
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error("✗ Error en migración:", err.message);
+    console.error("Error en migracion:", err.message);
     process.exit(1);
   } finally {
     client.release();

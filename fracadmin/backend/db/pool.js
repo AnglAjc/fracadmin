@@ -9,7 +9,7 @@ const pool = new Pool({
 });
 
 pool.on("error", (err) => {
-  console.error("[DB] Error inesperado en cliente idle:", err.message);
+  console.error("[DB] Error:", err.message);
 });
 
 module.exports = pool;
