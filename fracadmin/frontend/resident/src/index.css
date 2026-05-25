@@ -1,25 +1,44 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 :root {
-  --blue:      #185FA5;
-  --blue-bg:   #E6F1FB;
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --surface2: #f1f0ec;
+  --border: rgba(0,0,0,0.1);
+  --border2: rgba(0,0,0,0.18);
+  --text: #1a1a18;
+  --text2: #5f5e5a;
+  --text3: #999890;
+  --blue: #185FA5;
+  --blue-bg: #E6F1FB;
   --blue-text: #0C447C;
-  --green:     #3B6D11;
-  --green-bg:  #EAF3DE;
-  --red:       #A32D2D;
-  --red-bg:    #FCEBEB;
-  --border:    rgba(0,0,0,0.1);
-  --border2:   rgba(0,0,0,0.18);
-  --text2:     #5f5e5a;
-  --text3:     #999890;
+  --green: #3B6D11;
+  --green-bg: #EAF3DE;
+  --green-border: #C0DD97;
+  --red: #A32D2D;
+  --red-bg: #FCEBEB;
+  --amber: #854F0B;
+  --amber-bg: #FAEEDA;
+  --radius: 8px;
+  --radius-lg: 12px;
 }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #f7f7f5;
-  color: #1a1a18;
+  background: var(--bg);
+  color: var(--text);
   font-size: 14px;
+  line-height: 1.5;
   min-height: 100vh;
 }
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--blue) !important;
+}
+
+button:focus { outline: none; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 3px; }

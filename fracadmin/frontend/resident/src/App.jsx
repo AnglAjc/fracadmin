@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import axios from "axios";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3001";
@@ -7,7 +7,6 @@ const CALLES = ["AMADA", "BALVINA", "MARBELLA", "MANUELA", "VIRGINIA"];
 const MESES_FULL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                     "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-// Genera lista de opciones mes/año desde Ene 2025 hasta mes actual +1
 function getMesesOpciones() {
   const opciones = [];
   const now = new Date();
@@ -20,31 +19,35 @@ function getMesesOpciones() {
   return opciones;
 }
 
+const S = {
+  wrap: { minHeight: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "2rem 1rem" },
+  card: { background: "var(--surface)", border: "0.5px solid var(--border)", borderRadius: "var(--radius-lg)", width: "100%", maxWidth: 480, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" },
+  header: { padding: "1.25rem 1.5rem", borderBottom: "0.5px solid var(--border)" },
+  body: { padding: "1.5rem" },
+  label: { display: "block", fontSize: 12, fontWeight: 500, color: "var(--text2)", marginBottom: 6 },
+  input: { width: "100%", padding: "8px 11px", borderRadius: "var(--radius)", border: "0.5px solid var(--border2)", fontSize: 13, background: "var(--surface)", color: "var(--text)", outline: "none", fontFamily: "inherit", boxSizing: "border-box" },
+  hint: { fontSize: 11, color: "var(--text3)", marginTop: 5 },
+  group: { marginBottom: "1rem" },
+  row: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: "1rem" },
+  chip: { display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: "var(--radius)", background: "var(--green-bg)", color: "var(--green)", fontSize: 13, marginBottom: "1rem" },
+  dropdown: { position: "absolute", left: 0, right: 0, top: "100%", marginTop: 4, background: "var(--surface)", border: "0.5px solid var(--border2)", borderRadius: "var(--radius)", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 20, overflow: "hidden" },
+  dropItem: { display: "block", width: "100%", textAlign: "left", padding: "10px 14px", fontSize: 13, borderBottom: "0.5px solid var(--border)", background: "none", cursor: "pointer", borderLeft: "none", borderRight: "none", borderTop: "none", fontFamily: "inherit", color: "var(--text)" },
+  submitBtn: { width: "100%", padding: "11px", borderRadius: "var(--radius)", border: "none", background: "var(--blue)", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 8, fontFamily: "inherit", transition: "background 0.15s" },
+  footer: { textAlign: "center", fontSize: 11, color: "var(--text3)", marginTop: 14 },
+};
+
 export default function App() {
-  const [step, setStep]           = useState("form");   // "form" | "success" | "error"
+  const [step, setStep]           = useState("form");
   const [loading, setLoading]     = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [residentFound, setResidentFound] = useState(null);
   const searchTimer = useRef(null);
 
-  const [form, setForm] = useState({
-    nombre:          "",
-    telefono:        "",
-    calle:           "",
-    lote:            "",
-    mza:             "",
-    mes:             "",
-    anio:            "",
-    monto:           "",
-    comprobante_url: "",
-    notas:           "",
-    resident_id:     "",
-  });
-
+  const emptyForm = { nombre:"", telefono:"", calle:"", lote:"", mza:"", mes:"", anio:"", monto:"", comprobante_url:"", notas:"", resident_id:"" };
+  const [form, setForm] = useState(emptyForm);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  // Autofill por nombre
   const handleNombreChange = (v) => {
     set("nombre", v);
     clearTimeout(searchTimer.current);
@@ -62,289 +65,219 @@ export default function App() {
   const selectResident = (r) => {
     setResidentFound(r);
     setSearchResults([]);
-    setForm(f => ({
-      ...f,
-      nombre:      r.residente.split("/")[0].trim(),
-      calle:       r.calle,
-      lote:        r.lote,
-      mza:         r.mza,
-      resident_id: r.id,
-    }));
+    setForm(f => ({ ...f, nombre: r.residente.split("/")[0].trim(), calle: r.calle, lote: r.lote, mza: r.mza, resident_id: r.id }));
   };
 
-  // Autofill por calle + lote + mza
-  const tryAutofillByLocation = async () => {
-    if (!form.calle || !form.lote) return;
+  const handleCalleOrLote = async (newCalle, newLote, newMza) => {
+    if (!newCalle || !newLote) return;
     try {
-      const params = new URLSearchParams({ calle: form.calle, lote: form.lote });
-      if (form.mza) params.set("mza", form.mza);
+      const params = new URLSearchParams({ calle: newCalle, lote: newLote });
+      if (newMza) params.set("mza", newMza);
       const { data } = await axios.get(`${API}/api/residents/by-location?${params}`);
       if (data) {
         setResidentFound(data);
-        set("resident_id", data.id);
-        if (!form.nombre) set("nombre", data.residente.split("/")[0].trim());
+        setForm(f => ({ ...f, resident_id: data.id, nombre: f.nombre || data.residente.split("/")[0].trim() }));
       }
     } catch {}
   };
 
-  useEffect(() => {
-    if (form.calle && form.lote) tryAutofillByLocation();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.calle, form.lote, form.mza]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.nombre || !form.calle || !form.lote || !form.mes || !form.monto) return;
-
     setLoading(true);
     try {
       await axios.post(`${API}/api/payments/submit`, {
-        resident_id:     form.resident_id || null,
-        nombre:          form.nombre.trim(),
-        telefono:        form.telefono.trim(),
-        calle:           form.calle,
-        lote:            form.lote.trim(),
-        mza:             form.mza.trim(),
-        mes:             form.mes,
-        anio:            Number(form.anio),
-        monto:           Number(form.monto),
+        resident_id: form.resident_id || null,
+        nombre: form.nombre.trim(),
+        telefono: form.telefono.trim(),
+        calle: form.calle,
+        lote: form.lote.trim(),
+        mza: form.mza.trim(),
+        mes: form.mes,
+        anio: Number(form.anio),
+        monto: Number(form.monto),
         comprobante_url: form.comprobante_url.trim() || null,
-        notas:           form.notas.trim() || null,
+        notas: form.notas.trim() || null,
       });
       setStep("success");
-    } catch (err) {
-      console.error(err);
-      setStep("error");
-    } finally {
-      setLoading(false);
-    }
+    } catch { setStep("error"); }
+    finally { setLoading(false); }
   };
 
   const opciones = getMesesOpciones();
 
+  // ── Pantalla de éxito ──
   if (step === "success") return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl border p-8 max-w-sm w-full text-center shadow-sm"
-           style={{ borderColor: "var(--border)" }}>
-        <div className="text-5xl mb-4">✅</div>
-        <h2 className="text-xl font-semibold mb-2">¡Pago registrado!</h2>
-        <p className="text-sm text-gray-500 mb-6">
-          Tu comprobante fue enviado a la administración.
+    <div style={S.wrap}>
+      <div style={{ ...S.card, textAlign: "center", padding: "3rem 2rem" }}>
+        <div style={{ fontSize: 52, marginBottom: 16 }}>✅</div>
+        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>¡Pago registrado!</div>
+        <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 24, lineHeight: 1.6 }}>
+          Tu comprobante fue enviado a la administración.<br />
           Recibirás una notificación por WhatsApp una vez que sea revisado y aprobado.
         </p>
-        <button onClick={() => { setStep("form"); setForm({ nombre:"",telefono:"",calle:"",lote:"",mza:"",mes:"",anio:"",monto:"",comprobante_url:"",notas:"",resident_id:"" }); setResidentFound(null); }}
-                className="w-full py-2.5 rounded-xl text-sm font-medium text-white"
-                style={{ background: "var(--blue)" }}>
+        <button style={S.submitBtn} onClick={() => { setStep("form"); setForm(emptyForm); setResidentFound(null); }}>
           Registrar otro pago
         </button>
       </div>
     </div>
   );
 
+  // ── Pantalla de error ──
   if (step === "error") return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl border p-8 max-w-sm w-full text-center shadow-sm"
-           style={{ borderColor: "var(--border)" }}>
-        <div className="text-5xl mb-4">⚠️</div>
-        <h2 className="text-xl font-semibold mb-2">Algo salió mal</h2>
-        <p className="text-sm text-gray-500 mb-6">No pudimos registrar tu pago. Por favor intenta de nuevo.</p>
-        <button onClick={() => setStep("form")}
-                className="w-full py-2.5 rounded-xl text-sm font-medium text-white"
-                style={{ background: "var(--blue)" }}>
-          Intentar de nuevo
-        </button>
+    <div style={S.wrap}>
+      <div style={{ ...S.card, textAlign: "center", padding: "3rem 2rem" }}>
+        <div style={{ fontSize: 52, marginBottom: 16 }}>⚠️</div>
+        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Algo salió mal</div>
+        <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 24 }}>No pudimos registrar tu pago. Por favor intenta de nuevo.</p>
+        <button style={S.submitBtn} onClick={() => setStep("form")}>Intentar de nuevo</button>
       </div>
     </div>
   );
 
+  // ── Formulario principal ──
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 py-10">
-      <div className="bg-white rounded-2xl border shadow-sm w-full max-w-md"
-           style={{ borderColor: "var(--border)" }}>
+    <div style={S.wrap}>
+      <div style={S.card}>
+
         {/* Header */}
-        <div className="px-6 py-5 border-b" style={{ borderColor: "var(--border)" }}>
-          <h1 className="text-lg font-semibold" style={{ color: "var(--blue)" }}>
-            Registro de Pago
-          </h1>
-          <p className="text-xs mt-0.5" style={{ color: "var(--text3)" }}>
-            Fraccionamiento · Administración de cuotas
-          </p>
+        <div style={S.header}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--blue-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="1.8" width="17" height="17"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            </div>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>Registro de Pago</div>
+              <div style={{ fontSize: 11, color: "var(--text3)" }}>Fraccionamiento · Administración de cuotas</div>
+            </div>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-6 space-y-4">
+        <form onSubmit={handleSubmit} style={S.body}>
 
-          {/* Nombre con autocompletar */}
-          <div className="relative">
-            <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text2)" }}>
-              Nombre completo *
-            </label>
+          {/* Nombre + autocompletar */}
+          <div style={{ ...S.group, position: "relative" }}>
+            <label style={S.label}>Nombre completo *</label>
             <input
+              style={S.input} required autoFocus
               value={form.nombre}
               onChange={e => handleNombreChange(e.target.value)}
               placeholder="Busca tu nombre o escríbelo..."
-              className="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-blue-500"
-              style={{ borderColor: "var(--border2)" }}
-              required autoFocus
             />
-            {searching && (
-              <p className="text-xs text-gray-400 mt-1">Buscando...</p>
-            )}
+            {searching && <div style={S.hint}>Buscando...</div>}
             {searchResults.length > 0 && (
-              <div className="absolute left-0 right-0 top-full mt-1 bg-white border rounded-xl shadow-lg z-20 overflow-hidden"
-                   style={{ borderColor: "var(--border2)" }}>
+              <div style={S.dropdown}>
                 {searchResults.map(r => (
-                  <button key={r.id} type="button" onClick={() => selectResident(r)}
-                          className="w-full text-left px-4 py-3 text-sm hover:bg-blue-50 border-b last:border-0 transition-colors"
-                          style={{ borderColor: "var(--border)" }}>
-                    <span className="font-medium">{r.residente.split("/")[0].trim()}</span>
-                    <span className="text-gray-400 text-xs ml-2">
-                      {r.calle} · L{r.lote}
-                    </span>
+                  <button key={r.id} type="button" style={S.dropItem}
+                          onMouseOver={e => e.target.style.background = "var(--blue-bg)"}
+                          onMouseOut={e => e.target.style.background = "none"}
+                          onClick={() => selectResident(r)}>
+                    <span style={{ fontWeight: 500 }}>{r.residente.split("/")[0].trim()}</span>
+                    <span style={{ color: "var(--text3)", fontSize: 12, marginLeft: 8 }}>{r.calle} · L{r.lote}</span>
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Chip de residente encontrado */}
+          {/* Chip residente encontrado */}
           {residentFound && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
-                 style={{ background: "var(--green-bg)", color: "var(--green)" }}>
-              <span>✓</span>
-              <span>
+            <div style={S.chip}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+              <span style={{ flex: 1, fontSize: 12 }}>
                 Residente encontrado: <strong>{residentFound.calle}</strong> · L{residentFound.lote} Mza {residentFound.mza}
               </span>
               <button type="button" onClick={() => { setResidentFound(null); set("resident_id", ""); }}
-                      className="ml-auto text-green-400 hover:text-green-600 text-xs">✕</button>
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--green)", fontSize: 16, lineHeight: 1, padding: "0 2px" }}>✕</button>
             </div>
           )}
 
           {/* Teléfono */}
-          <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text2)" }}>
-              Número de WhatsApp *
-            </label>
-            <input
-              value={form.telefono}
-              onChange={e => set("telefono", e.target.value)}
-              placeholder="10 dígitos: 55 1234 5678"
-              className="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-blue-500"
-              style={{ borderColor: "var(--border2)" }}
-              type="tel" required
-            />
-            <p className="text-xs mt-1" style={{ color: "var(--text3)" }}>
-              Aquí recibirás la confirmación de tu pago
-            </p>
+          <div style={S.group}>
+            <label style={S.label}>Número de WhatsApp *</label>
+            <input style={S.input} type="tel" required value={form.telefono}
+                   onChange={e => set("telefono", e.target.value)}
+                   placeholder="10 dígitos: 55 1234 5678" />
+            <div style={S.hint}>Aquí recibirás la confirmación de tu pago</div>
           </div>
 
-          {/* Calle + Lote + Mza */}
-          <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text2)" }}>
-              Calle *
-            </label>
-            <select value={form.calle} onChange={e => set("calle", e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-blue-500"
-                    style={{ borderColor: "var(--border2)" }} required>
+          {/* Calle */}
+          <div style={S.group}>
+            <label style={S.label}>Calle *</label>
+            <select style={{ ...S.input, cursor: "pointer" }} required value={form.calle}
+                    onChange={e => { set("calle", e.target.value); handleCalleOrLote(e.target.value, form.lote, form.mza); }}>
               <option value="">Selecciona tu calle...</option>
               {CALLES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Lote + Mza */}
+          <div style={S.row}>
             <div>
-              <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text2)" }}>
-                Número de casa *
-              </label>
-              <input value={form.lote} onChange={e => set("lote", e.target.value)}
-                     placeholder="Ej: 12, 12-A, 37-B"
-                     className="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-blue-500"
-                     style={{ borderColor: "var(--border2)" }} required />
+              <label style={S.label}>Número de casa *</label>
+              <input style={S.input} required value={form.lote}
+                     onChange={e => { set("lote", e.target.value); handleCalleOrLote(form.calle, e.target.value, form.mza); }}
+                     placeholder="Ej: 12, 37-B" />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text2)" }}>
-                Manzana
-              </label>
-              <input value={form.mza} onChange={e => set("mza", e.target.value)}
-                     placeholder="Ej: 3"
-                     className="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-blue-500"
-                     style={{ borderColor: "var(--border2)" }} />
+              <label style={S.label}>Manzana</label>
+              <input style={S.input} value={form.mza}
+                     onChange={e => { set("mza", e.target.value); handleCalleOrLote(form.calle, form.lote, e.target.value); }}
+                     placeholder="Ej: 3" />
             </div>
           </div>
 
           {/* Mes de pago */}
-          <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text2)" }}>
-              Mes que estás pagando *
-            </label>
-            <select
-              value={`${form.mes}-${form.anio}`}
-              onChange={e => {
-                const [m, a] = e.target.value.split("-");
-                setForm(f => ({ ...f, mes: m, anio: a }));
-              }}
-              className="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-blue-500"
-              style={{ borderColor: "var(--border2)" }} required
-            >
+          <div style={S.group}>
+            <label style={S.label}>Mes que estás pagando *</label>
+            <select style={{ ...S.input, cursor: "pointer" }} required
+                    value={`${form.mes}-${form.anio}`}
+                    onChange={e => { const [m, a] = e.target.value.split("-"); setForm(f => ({ ...f, mes: m, anio: a })); }}>
               <option value="-">Selecciona el mes...</option>
               {opciones.map(o => (
-                <option key={`${o.mes}-${o.anio}`} value={`${o.mes}-${o.anio}`}>
-                  {o.label}
-                </option>
+                <option key={`${o.mes}-${o.anio}`} value={`${o.mes}-${o.anio}`}>{o.label}</option>
               ))}
             </select>
           </div>
 
           {/* Monto */}
-          <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text2)" }}>
-              Monto pagado (MXN) *
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-              <input value={form.monto} onChange={e => set("monto", e.target.value)}
-                     placeholder="350"
-                     className="w-full border rounded-lg pl-7 pr-3 py-2.5 text-sm outline-none focus:border-blue-500"
-                     style={{ borderColor: "var(--border2)" }}
-                     type="number" min="1" step="1" required />
+          <div style={S.group}>
+            <label style={S.label}>Monto pagado (MXN) *</label>
+            <div style={{ position: "relative" }}>
+              <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "var(--text3)", fontSize: 13 }}>$</span>
+              <input style={{ ...S.input, paddingLeft: 22 }} type="number" min="1" step="1" required
+                     value={form.monto} onChange={e => set("monto", e.target.value)}
+                     placeholder="350" />
             </div>
           </div>
 
-          {/* Comprobante URL */}
-          <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text2)" }}>
-              Enlace del comprobante
-            </label>
-            <input value={form.comprobante_url} onChange={e => set("comprobante_url", e.target.value)}
-                   placeholder="https://drive.google.com/... o similar"
-                   className="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-blue-500"
-                   style={{ borderColor: "var(--border2)" }}
-                   type="url" />
-            <p className="text-xs mt-1" style={{ color: "var(--text3)" }}>
-              Sube tu foto a Google Drive y pega el enlace aquí
-            </p>
+          {/* Comprobante */}
+          <div style={S.group}>
+            <label style={S.label}>Enlace del comprobante</label>
+            <input style={S.input} type="url" value={form.comprobante_url}
+                   onChange={e => set("comprobante_url", e.target.value)}
+                   placeholder="https://drive.google.com/..." />
+            <div style={S.hint}>Sube tu foto a Google Drive y pega el enlace aquí</div>
           </div>
 
-          {/* Notas opcionales */}
-          <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text2)" }}>
-              Notas (opcional)
-            </label>
-            <textarea value={form.notas} onChange={e => set("notas", e.target.value)}
-                      placeholder="Ej: Pago parcial, pago con cheque..."
-                      className="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-blue-500 resize-none"
-                      style={{ borderColor: "var(--border2)" }}
-                      rows={2} />
+          {/* Notas */}
+          <div style={S.group}>
+            <label style={S.label}>Notas (opcional)</label>
+            <textarea style={{ ...S.input, resize: "none", height: 64 }}
+                      value={form.notas} onChange={e => set("notas", e.target.value)}
+                      placeholder="Ej: Pago parcial, pago con cheque..." />
           </div>
+
+          {/* Separador */}
+          <div style={{ borderTop: "0.5px solid var(--border)", margin: "4px 0 16px" }} />
 
           <button type="submit" disabled={loading}
-                  className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity disabled:opacity-60 mt-2"
-                  style={{ background: "var(--blue)" }}>
+                  style={{ ...S.submitBtn, opacity: loading ? 0.6 : 1, cursor: loading ? "not-allowed" : "pointer" }}>
             {loading ? "Enviando..." : "Enviar comprobante de pago"}
           </button>
 
-          <p className="text-center text-xs mt-3" style={{ color: "var(--text3)" }}>
+          <div style={S.footer}>
             Recibirás confirmación por WhatsApp una vez que la administración apruebe tu pago.
-          </p>
+          </div>
         </form>
       </div>
     </div>
