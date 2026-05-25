@@ -39,7 +39,7 @@ app.use("/api/auth", rateLimit({
   message: { error: "Demasiados intentos, espera 15 minutos." },
 }));
 
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: "15mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // ── Rutas ──────────────────────────────────────────────────────
