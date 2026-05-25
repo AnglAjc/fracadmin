@@ -9,6 +9,8 @@ const residentRoutes  = require("./routes/residents");
 const paymentRoutes   = require("./routes/payments");
 const adminRoutes     = require("./routes/admin");
 const whatsappRoutes  = require("./routes/whatsapp");
+const finanzasRoutes  = require("./routes/finanzas");
+const residentsCrud   = require("./routes/residents_crud");
 
 const app = express();
 
@@ -48,6 +50,8 @@ app.use("/api/residents", residentRoutes);
 app.use("/api/payments",  paymentRoutes);
 app.use("/api/admin",     adminRoutes);
 app.use("/api/whatsapp",  whatsappRoutes);
+app.use("/api/finanzas",  finanzasRoutes);
+app.use("/api/residents", residentsCrud);
 
 // Health check para Render
 app.get("/health", (req, res) => res.json({ status: "ok", ts: new Date().toISOString() }));
