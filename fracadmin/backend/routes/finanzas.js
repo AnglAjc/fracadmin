@@ -173,3 +173,26 @@ router.delete("/movimientos/:id", async (req, res) => {
 });
 
 module.exports = router;
+// ── EDITAR / ELIMINAR CATEGORÍAS ───────────────────────────────
+router.patch("/categorias/:id", async (req, res) => {
+  const { nombre, color } = req.body;
+  const { rows } = await pool.query(
+    "UPDATE finanzas_categorias SET nombre=COALESCE($1,nombre), color=COALESCE($2,color) WHERE id=$3 RETURNING *",
+    [nombre||null, color||null, req.params.id]
+  );
+  res.json(rows[0]);
+});
+
+router.delete("/categorias/:id", async (req, res) => {
+  // Desvincula movimientos antes de eliminar
+  await pool.query("UPDATE finanzas_movimientos SET categoria_id=NULL WHERE categoria_id=$1", [req.params.id]);
+  await pool.query("DELETE FROM finanzas_categorias WHERE id=$1", [req.params.id]);
+  res.json({ ok: true });
+});
+
+// ── ELIMINAR CUENTAS ───────────────────────────────────────────
+router.delete("/cuentas/:id", async (req, res) => {
+  await pool.query("UPDATE finanzas_movimientos SET cuenta_id=NULL WHERE cuenta_id=$1", [req.params.id]);
+  await pool.query("DELETE FROM finanzas_cuentas WHERE id=$1", [req.params.id]);
+  res.json({ ok: true });
+});
