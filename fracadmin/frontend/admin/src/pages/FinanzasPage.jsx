@@ -231,6 +231,9 @@ export default function FinanzasPage() {
   const [resumen, setResumen]     = useState(null);
   const [loading, setLoading]     = useState(true);
   const [tipoFilter, setTipoFilter] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateFrom, setDateFrom]   = useState("");
+  const [dateTo, setDateTo]       = useState("");
   const [movModal, setMovModal]   = useState(null);   // null | "new" | obj
   const [cuentaModal, setCuentaModal] = useState(null); // null | "new" | obj
   const [catModal, setCatModal]   = useState(null);   // null | "new" | obj
@@ -247,8 +250,12 @@ export default function FinanzasPage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
+      const p = new URLSearchParams({ limit:"300" });
+      if (tipoFilter) p.set("tipo", tipoFilter);
+      if (dateFrom)   p.set("desde", dateFrom);
+      if (dateTo)     p.set("hasta", dateTo);
       const [mv, ct, ca, rs] = await Promise.all([
-        api.get(`/api/finanzas/movimientos?limit=300${tipoFilter?`&tipo=${tipoFilter}`:""}`),
+        api.get(`/api/finanzas/movimientos?${p}`),
         api.get("/api/finanzas/cuentas"),
         api.get("/api/finanzas/categorias"),
         api.get("/api/finanzas/resumen"),
@@ -259,7 +266,7 @@ export default function FinanzasPage() {
       setResumen(rs.data);
     } catch(e){ console.error(e); }
     finally { setLoading(false); }
-  }, [tipoFilter]);
+  }, [tipoFilter, dateFrom, dateTo]);
 
   useEffect(()=>{ loadAll(); }, [loadAll]);
 
@@ -321,15 +328,22 @@ export default function FinanzasPage() {
       {tab==="movimientos" && (
         <>
           <div className="filters">
+            <input type="text" placeholder="Buscar concepto, notas..." value={searchQuery}
+                   onChange={e=>setSearchQuery(e.target.value)} style={{ flex:1, minWidth:160 }}/>
             <select value={tipoFilter} onChange={e=>setTipoFilter(e.target.value)}>
               <option value="">Todos los movimientos</option>
               <option value="gasto">Solo gastos</option>
               <option value="ingreso">Solo ingresos</option>
             </select>
+            <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} title="Desde"/>
+            <input type="date" value={dateTo}   onChange={e=>setDateTo(e.target.value)}   title="Hasta"/>
+            {(searchQuery||dateFrom||dateTo) && (
+              <button className="btn" onClick={()=>{ setSearchQuery(""); setDateFrom(""); setDateTo(""); }}>✕ Limpiar</button>
+            )}
           </div>
           {loading ? (
             <div className="empty"><div className="icon">📊</div><p>Cargando...</p></div>
-          ) : movimientos.length===0 ? (
+          ) : movimientos.filter(m => !searchQuery || m.concepto?.toLowerCase().includes(searchQuery.toLowerCase()) || m.notas?.toLowerCase().includes(searchQuery.toLowerCase())).length===0 ? (
             <div className="empty"><div className="icon">📊</div><p>Sin movimientos registrados.</p><button className="btn primary" onClick={()=>setMovModal("new")}>+ Agregar primero</button></div>
           ) : (
             <div className="card" style={{ marginBottom:0 }}>
@@ -353,7 +367,9 @@ export default function FinanzasPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {movimientos.map(m=>(
+                    {movimientos
+                    .filter(m => !searchQuery || m.concepto?.toLowerCase().includes(searchQuery.toLowerCase()) || m.notas?.toLowerCase().includes(searchQuery.toLowerCase()))
+                    .map(m=>(
                       <tr key={m.id}>
                         <td style={{ fontSize:12, color:"var(--text3)", whiteSpace:"nowrap" }}>
                           {new Date(m.fecha+"T12:00:00").toLocaleDateString("es-MX")}

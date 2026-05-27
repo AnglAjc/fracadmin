@@ -99,3 +99,39 @@ router.post("/reset", requireAuth, async (req, res) => {
 });
 
 module.exports = router;
+
+// POST /api/admin/notify-all-morosos — notificar a todos los morosos con teléfono
+router.post("/notify-all-morosos", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT * FROM residents WHERE telefono IS NOT NULL AND telefono != ''");
+    const now = new Date();
+    const maxMes2026 = now.getFullYear() >= 2026 ? now.getMonth() : 0;
+
+    const morosos = rows.filter(r => {
+      let deuda = 0;
+      for (let m=0;m<12;m++) if(r.pagos25[m]==="pendiente") deuda+=350;
+      for (let m=0;m<maxMes2026;m++) if(r.pagos26[m]==="pendiente") deuda+=400;
+      deuda += Number(r.deuda_extra||0);
+      return deuda > 0;
+    });
+
+    let enviados = 0, fallidos = 0;
+    for (const r of morosos) {
+      let deuda = 0;
+      for (let m=0;m<12;m++) if(r.pagos25[m]==="pendiente") deuda+=350;
+      for (let m=0;m<maxMes2026;m++) if(r.pagos26[m]==="pendiente") deuda+=400;
+      deuda += Number(r.deuda_extra||0);
+      const ok = await whatsappSvc.sendDebtReminder({
+        telefono: r.telefono,
+        nombre: r.residente.split("/")[0].trim(),
+        deuda,
+      }).catch(()=>false);
+      if (ok) enviados++; else fallidos++;
+    }
+
+    res.json({ ok:true, total:morosos.length, enviados, fallidos });
+  } catch (err) {
+    console.error("[notify-all-morosos]", err.message);
+    res.status(500).json({ error: "Error al enviar notificaciones" });
+  }
+});

@@ -175,3 +175,18 @@ router.patch("/:id/reject", requireAuth, async (req, res) => {
 });
 
 module.exports = router;
+
+// GET /api/payments/check-duplicate
+router.get("/check-duplicate", async (req, res) => {
+  const { resident_id, mes, anio } = req.query;
+  if (!resident_id || !mes || !anio) return res.json({ exists: false });
+  try {
+    const { rows } = await pool.query(`
+      SELECT id FROM payment_submissions
+      WHERE resident_id=$1 AND mes=$2 AND anio=$3
+        AND status IN ('pendiente','aprobado')
+      LIMIT 1
+    `, [resident_id, mes, Number(anio)]);
+    res.json({ exists: rows.length > 0 });
+  } catch { res.json({ exists: false }); }
+});
