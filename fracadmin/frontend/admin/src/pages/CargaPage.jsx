@@ -1,7 +1,69 @@
 import { useState, useRef } from "react";
 import * as XLSX from "xlsx";
 import api from "../lib/api";
-import { parseExcelWorkbook } from "../lib/helpers";
+
+const CALLES = ["AMADA","BALVINA","MARBELLA","MANUELA","VIRGINIA"];
+
+function parseVal(v) {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim().toUpperCase();
+  if (!s || s === "NAN") return null;
+  if (s === "CHECAR" || s === "N/A" || s === "NA") return "pendiente";
+  if (s === "VACIO" || s === "VACÍO") return "vacio";
+  const n = parseFloat(s);
+  return isNaN(n) ? "pendiente" : n;
+}
+
+function parseWorkbook(wb) {
+  const result = [];
+  for (const rawName of wb.SheetNames) {
+    const name = rawName.trim().toUpperCase();
+    if (!CALLES.includes(name)) continue;
+
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[rawName], {
+      header: 1,
+      defval: null,
+      raw: false,
+    });
+
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (!row || row.length < 3) continue;
+
+      const lote = String(row[0] ?? "").trim();
+      const mza  = String(row[1] ?? "").trim();
+      const res  = String(row[2] ?? "").trim();
+
+      // Saltar filas inválidas
+      if (!res || res === "NaN" || res.toLowerCase() === "nan") continue;
+      if (!lote || lote === "NaN") continue;
+      if (res.toLowerCase().startsWith("terreno")) continue;
+      if (res.toLowerCase().startsWith("teereno")) continue;
+      if (res.toUpperCase() === "LOTE" || res.toUpperCase() === "RESIDENTE") continue;
+      if (!isNaN(Number(res))) continue;
+
+      const pagos25 = {};
+      const pagos26 = {};
+      for (let m = 0; m < 12; m++) {
+        pagos25[m] = parseVal(row[3 + m]);
+        pagos26[m] = parseVal(row[17 + m]);
+      }
+      const deudaExtra = parseFloat(row[16]) || 0;
+
+      result.push({
+        id: `${name}-${lote}-${mza}-${r}`,
+        calle: name,
+        lote,
+        mza,
+        residente: res,
+        pagos25,
+        pagos26,
+        deudaExtra,
+      });
+    }
+  }
+  return result;
+}
 
 export default function CargaPage() {
   const [status, setStatus]   = useState(null);
@@ -12,19 +74,22 @@ export default function CargaPage() {
   const handleFile = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setStatus(null); setPreview(null);
+    setStatus(null);
+    setPreview(null);
+
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const wb = XLSX.read(ev.target.result, { type: "array" });
-        const parsed = parseExcelWorkbook(wb, XLSX);
+        const wb     = XLSX.read(ev.target.result, { type: "array" });
+        const parsed = parseWorkbook(wb);
+
         if (parsed.length === 0) {
           setStatus({ type: "error", msg: "No se encontraron residentes. Verifica que el archivo tenga las hojas: AMADA, BALVINA, MARBELLA, MANUELA, VIRGINIA." });
           return;
         }
-        const forDB = parsed.map(r => ({ id: r.id, calle: r.calle.toUpperCase(), lote: r.lote, mza: r.mza, residente: r.residente, pagos25: r.pagos25, pagos26: r.pagos26, deudaExtra: r.deudaExtra }));
-        const calles = [...new Set(forDB.map(r => r.calle))];
-        setPreview({ residents: forDB, file: file.name, calles });
+
+        const calles = [...new Set(parsed.map(r => r.calle))];
+        setPreview({ residents: parsed, file: file.name, calles });
       } catch (err) {
         setStatus({ type: "error", msg: "Error al leer el archivo: " + err.message });
       }
@@ -37,7 +102,10 @@ export default function CargaPage() {
     setLoading(true);
     try {
       const { data } = await api.post("/api/residents/import", { residents: preview.residents });
-      setStatus({ type: "success", msg: `✓ Importación completada: ${data.inserted} nuevos · ${data.updated} actualizados · ${data.total} total` });
+      setStatus({
+        type: "success",
+        msg: `✓ Importación completada: ${data.inserted} nuevos · ${data.updated} actualizados · ${data.total} total`,
+      });
       setPreview(null);
       if (inputRef.current) inputRef.current.value = "";
     } catch (err) {
@@ -52,31 +120,49 @@ export default function CargaPage() {
       <div className="page-title">Cargar datos</div>
       <div className="page-sub">Importa tu archivo Excel del fraccionamiento</div>
 
-      {status && <div className={`alert ${status.type === "success" ? "success" : "error"}`}>{status.msg}</div>}
+      {status && (
+        <div className={`alert ${status.type === "success" ? "success" : "error"}`}>
+          {status.msg}
+        </div>
+      )}
 
       {!preview && (
         <div className="upload-zone" onClick={() => inputRef.current?.click()}>
           <div className="icon">📂</div>
           <h3>Haz clic para seleccionar tu archivo</h3>
           <p>Formato .xlsx · Compatible con el formato del fraccionamiento</p>
-          <input ref={inputRef} type="file" accept=".xlsx,.xls" onChange={handleFile} style={{ display: "none" }} />
+          <input ref={inputRef} type="file" accept=".xlsx,.xls"
+                 onChange={handleFile} style={{ display: "none" }} />
         </div>
       )}
 
       {preview && (
         <div className="card">
-          <div className="card-header"><h3>Vista previa — {preview.file}</h3></div>
+          <div className="card-header">
+            <h3>Vista previa — {preview.file}</h3>
+          </div>
           <div className="card-body">
             <div className="metrics" style={{ marginBottom: "1rem" }}>
-              <div className="metric blue"><label>Total residentes</label><div className="val">{preview.residents.length}</div></div>
-              <div className="metric"><label>Calles</label><div className="val">{preview.calles.length}</div></div>
+              <div className="metric blue">
+                <label>Total residentes</label>
+                <div className="val">{preview.residents.length}</div>
+              </div>
+              <div className="metric">
+                <label>Calles</label>
+                <div className="val">{preview.calles.length}</div>
+              </div>
             </div>
-            <p style={{ fontSize: 12, color: "var(--text2)", marginBottom: "1rem" }}>Calles: {preview.calles.join(", ")}</p>
+            <p style={{ fontSize: 12, color: "var(--text2)", marginBottom: "1rem" }}>
+              Calles detectadas: {preview.calles.join(", ")}
+            </p>
             <div style={{ display: "flex", gap: 8 }}>
               <button className="btn primary" onClick={importar} disabled={loading}>
                 {loading ? "Importando..." : `Importar ${preview.residents.length} residentes`}
               </button>
-              <button className="btn" onClick={() => { setPreview(null); if (inputRef.current) inputRef.current.value = ""; }}>
+              <button className="btn" onClick={() => {
+                setPreview(null);
+                if (inputRef.current) inputRef.current.value = "";
+              }}>
                 Cancelar
               </button>
             </div>
@@ -88,11 +174,16 @@ export default function CargaPage() {
         <div className="card-header"><h3>Formato esperado del archivo</h3></div>
         <div className="card-body">
           <p style={{ color: "var(--text2)", fontSize: 13, lineHeight: 1.7, marginBottom: 10 }}>
-            El Excel debe tener hojas con los nombres de las calles: <strong>AMADA, BALVINA, MARBELLA, MANUELA, VIRGINIA</strong>.
+            El Excel debe tener hojas con los nombres de las calles:{" "}
+            <strong>AMADA, BALVINA, MARBELLA, MANUELA, VIRGINIA</strong>.
             Cada hoja con columnas: LOTE · MZA · RESIDENTE · 12 meses 2025 · [deuda extra] · [vacío] · 12 meses 2026
           </p>
-          <div className="format-box">LOTE | MZA | RESIDENTE | ENE | FEB | ... | DIC | [deuda] | [vacío] | ENE26 | ... | DIC26</div>
-          <p style={{ color: "var(--text3)", fontSize: 12, marginTop: 8 }}>Los valores "CHECAR" se detectan como pago pendiente. "VACIO" como unidad desocupada.</p>
+          <div className="format-box">
+            LOTE | MZA | RESIDENTE | ENE | FEB | ... | DIC | [deuda] | [vacío] | ENE26 | ... | DIC26
+          </div>
+          <p style={{ color: "var(--text3)", fontSize: 12, marginTop: 8 }}>
+            Los valores "CHECAR" y "N/A" se detectan como pago pendiente. "VACIO" como unidad desocupada.
+          </p>
         </div>
       </div>
 
