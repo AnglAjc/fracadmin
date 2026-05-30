@@ -8,6 +8,9 @@ const TABS = [
   { key:"categorias",  label:"Categorías",  icon:"🏷️" },
 ];
 
+// Parsea fecha YYYY-MM-DD sin problema de timezone
+const fmtFecha = (f, opts) => { if (!f) return "—"; const [y,m,d] = String(f).slice(0,10).split("-").map(Number); return new Date(y, m-1, d).toLocaleDateString("es-MX", opts || { day:"2-digit", month:"2-digit", year:"numeric" }); };
+
 const MESES_FULL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                     "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
@@ -183,8 +186,8 @@ async function generarPDFRendicion(movimientos, cuentas, resumen) {
   // Período cubierto
   const fechas = movimientos.map(m=>m.fecha).sort();
   if (fechas.length > 0) {
-    const desde = new Date(fechas[0]+"T12:00").toLocaleDateString("es-MX",{month:"long",year:"numeric"});
-    const hasta  = new Date(fechas[fechas.length-1]+"T12:00").toLocaleDateString("es-MX",{month:"long",year:"numeric"});
+    const desde = fmtFecha(fechas[0], {month:"long",year:"numeric"});
+    const hasta  = fmtFecha(fechas[fechas.length-1], {month:"long",year:"numeric"});
     doc.text(`Período: ${desde} – ${hasta}`, 14, 28);
   }
 
@@ -276,7 +279,7 @@ async function generarPDFRendicion(movimientos, cuentas, resumen) {
         startY: y,
         head: [[{ content:cat, colSpan:3 }]],
         body: items.map(m => [
-          new Date(m.fecha+"T12:00").toLocaleDateString("es-MX",{day:"2-digit",month:"2-digit",year:"2-digit"}),
+          fmtFecha(m.fecha, {day:"2-digit",month:"2-digit",year:"2-digit"}),
           m.concepto,
           `$${Number(m.monto).toLocaleString("es-MX")}`,
         ]),
@@ -325,7 +328,7 @@ async function generarPDFRendicion(movimientos, cuentas, resumen) {
         startY: y,
         head: [[{ content:cat, colSpan:3 }]],
         body: items.map(m=>[
-          new Date(m.fecha+"T12:00").toLocaleDateString("es-MX",{day:"2-digit",month:"2-digit",year:"2-digit"}),
+          fmtFecha(m.fecha, {day:"2-digit",month:"2-digit",year:"2-digit"}),
           m.concepto,
           `$${Number(m.monto).toLocaleString("es-MX")}`,
         ]),
@@ -515,7 +518,7 @@ export default function FinanzasPage() {
                   <tbody>
                     {movFiltrados.map(m=>(
                       <tr key={m.id}>
-                        <td style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>{new Date(m.fecha+"T12:00:00").toLocaleDateString("es-MX")}</td>
+                        <td style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>{fmtFecha(m.fecha)}</td>
                         <td><div style={{fontWeight:500,fontSize:13}}>{m.concepto}</div>{m.notas&&<div style={{fontSize:11,color:"var(--text3)"}}>{m.notas}</div>}</td>
                         <td>{m.categoria_nombre?<span className="badge" style={{background:(m.categoria_color||"#854F0B")+"22",color:m.categoria_color||"#854F0B"}}>{m.categoria_nombre}</span>:<span style={{color:"var(--text3)",fontSize:12}}>—</span>}</td>
                         <td style={{fontSize:12,color:"var(--text2)"}}>{m.cuenta_nombre||"—"}</td>

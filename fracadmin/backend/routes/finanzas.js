@@ -71,7 +71,7 @@ router.get("/movimientos", async (req, res) => {
   if (hasta)        { params.push(hasta);        where += ` AND m.fecha <= $${params.length}`; }
 
   const { rows } = await pool.query(`
-    SELECT m.*, c.nombre AS categoria_nombre, c.color AS categoria_color,
+    SELECT m.id, m.tipo, m.concepto, m.monto, m.categoria_id, m.cuenta_id, m.notas, m.comprobante, m.created_at, TO_CHAR(m.fecha, 'YYYY-MM-DD') AS fecha, c.nombre AS categoria_nombre, c.color AS categoria_color,
            ct.nombre AS cuenta_nombre
     FROM finanzas_movimientos m
     LEFT JOIN finanzas_categorias c  ON c.id  = m.categoria_id
