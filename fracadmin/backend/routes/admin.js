@@ -34,6 +34,7 @@ router.get("/dashboard", requireAuth, async (req, res) => {
     const maxMes2026 = now.getFullYear() >= 2026 ? now.getMonth() : 0;
     let morosos = 0, alCorriente = 0, totalDeuda = 0;
     for (const r of allResidents) {
+      if (r.pausado) { alCorriente++; continue; }
       let deuda = 0;
       for (let m = 0; m < 12; m++) if (r.pagos25[m] === "pendiente") deuda += 350;
       for (let m = 0; m < maxMes2026; m++) if (r.pagos26[m] === "pendiente") deuda += 400;

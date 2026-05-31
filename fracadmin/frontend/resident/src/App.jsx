@@ -5,15 +5,14 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:3001";
 const CALLES = ["AMADA","BALVINA","MARBELLA","MANUELA","VIRGINIA"];
 const MESES_FULL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                     "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-const CUOTA = { 2025:350, 2026:400 };
 
-function getMesesOpciones() {
-  const opciones = [];
+// Solo meses del año en curso (2026)
+function getMeses2026() {
   const now = new Date();
-  for (let y = 2025; y <= now.getFullYear(); y++) {
-    const maxM = y < now.getFullYear() ? 12 : now.getMonth() + 2;
-    for (let m = 1; m <= maxM && m <= 12; m++)
-      opciones.push({ label:`${MESES_FULL[m-1]} ${y}`, mes:m, anio:y, key:`${m}-${y}`, cuota:CUOTA[y]||400 });
+  const maxM = now.getFullYear() >= 2026 ? now.getMonth() + 2 : 1;
+  const opciones = [];
+  for (let m = 1; m <= Math.min(maxM, 12); m++) {
+    opciones.push({ label:`${MESES_FULL[m-1]} 2026`, mes:m, anio:2026, key:`${m}-2026`, cuota:400 });
   }
   return opciones.reverse();
 }
@@ -27,339 +26,465 @@ async function fileToBase64(file) {
   });
 }
 
-const DRAFT_KEY = "fracadmin_draft_v2";
-const saveDraft  = (data) => { try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify({...data,ts:Date.now()})); } catch {} };
+const DRAFT_KEY = "fracadmin_draft_v3";
+const saveDraft  = (d) => { try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify({...d,ts:Date.now()})); } catch {} };
 const loadDraft  = () => { try { const d=JSON.parse(sessionStorage.getItem(DRAFT_KEY)||"null"); if(!d||Date.now()-d.ts>2*60*60*1000){sessionStorage.removeItem(DRAFT_KEY);return null;} return d; } catch{return null;} };
 const clearDraft = () => { try{sessionStorage.removeItem(DRAFT_KEY);}catch{} };
 
-const emptyProp = () => ({ id:Date.now(), calle:"", lote:"", mza:"", resident_id:"", residentData:null });
+const emptyProp = () => ({ id:Date.now(), calle:"", lote:"", mza:"", resident_id:"", residentData:null, mesesSel:[], imagePreview:null, imageBase64:null });
 
-// ── Calcular meses pendientes de un residente ──────────────────
-function calcMesesPendientes(residentData) {
-  if (!residentData) return [];
+function calcPendientes(rd) {
+  if (!rd) return [];
   const now = new Date();
-  const maxM26 = now.getFullYear() >= 2026 ? now.getMonth() : 0;
-  const p25 = residentData.pagos25 || {};
-  const p26 = residentData.pagos26 || {};
+  const maxM26 = now.getFullYear()>=2026 ? now.getMonth() : 0;
+  const p25 = rd.pagos25||{}, p26 = rd.pagos26||{};
   const list = [];
-  for (let m = 0; m < 12; m++) {
-    if (p25[m] === "pendiente")
-      list.push({ mes:m+1, anio:2025, key:`${m+1}-2025`, label:`${MESES_FULL[m]} 2025`, cuota:350 });
-  }
-  for (let m = 0; m < maxM26; m++) {
-    if (p26[m] === "pendiente")
-      list.push({ mes:m+1, anio:2026, key:`${m+1}-2026`, label:`${MESES_FULL[m]} 2026`, cuota:400 });
-  }
+  for (let m=0;m<12;m++) if(p25[m]==="pendiente") list.push({mes:m+1,anio:2025,key:`${m+1}-2025`,label:`${MESES_FULL[m]} 2025`,cuota:350});
+  for (let m=0;m<maxM26;m++) if(p26[m]==="pendiente") list.push({mes:m+1,anio:2026,key:`${m+1}-2026`,label:`${MESES_FULL[m]} 2026`,cuota:400});
   return list;
 }
 
-// ── Iconos ────────────────────────────────────────────────────
-const CheckIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>;
-const PlusIcon  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
-const TrashIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>;
+// ── Iconos ─────────────────────────────────────────────────────
+const Check  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>;
+const Trash  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>;
+const Copy   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>;
 
-// ── Modal de meses ─────────────────────────────────────────────
-function MesesModal({ opciones, mesesSel, pendientes, onToggle, onClose }) {
-  const total = mesesSel.reduce((s,m) => s + (m.cuota||400), 0);
+const DATOS_BANCO = `*BANAMEX*\nErnesto Flores Castañón\n002180701208704228`;
+
+// ── Paso 1: Datos personales ───────────────────────────────────
+function Paso1({ form, setF, searchResults, searching, onSelectResident, onNext, error }) {
+  const [copied, setCopied] = useState(false);
+  const inp = { width:"100%",padding:"11px 13px",borderRadius:10,border:"0.5px solid var(--border2)",fontSize:14,background:"var(--surface)",color:"var(--text)",outline:"none",fontFamily:"inherit",boxSizing:"border-box" };
+
+  const copyBanco = () => {
+    navigator.clipboard.writeText(DATOS_BANCO).then(() => { setCopied(true); setTimeout(()=>setCopied(false),2500); });
+  };
+
   return (
-    <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:50,display:"flex",alignItems:"flex-end",justifyContent:"center" }}
-         onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()}
-           style={{ background:"var(--surface)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:520,padding:"1.5rem 1.5rem 2.5rem",boxShadow:"0 -8px 32px rgba(0,0,0,0.18)",maxHeight:"82vh",overflowY:"auto" }}>
-        <div style={{ width:40,height:4,background:"var(--border2)",borderRadius:2,margin:"0 auto 1.25rem",opacity:0.4 }}/>
-        <div style={{ fontSize:16,fontWeight:700,marginBottom:4 }}>Selecciona los meses a pagar</div>
-        <div style={{ fontSize:12,color:"var(--text3)",marginBottom:20 }}>Toca cada mes que estás pagando</div>
+    <div>
+      {/* Datos bancarios */}
+      <div style={{ background:"var(--blue-bg)",border:"1px solid var(--blue)",borderRadius:12,padding:"14px 16px",marginBottom:18 }}>
+        <div style={{ fontSize:12,fontWeight:700,color:"var(--blue-text)",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+          <span>🏦 Datos para transferencia bancaria</span>
+          <button type="button" onClick={copyBanco}
+                  style={{ display:"flex",alignItems:"center",gap:5,padding:"5px 10px",borderRadius:7,border:"1px solid var(--blue)",background:copied?"var(--green-bg)":"var(--surface)",color:copied?"var(--green)":"var(--blue)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",transition:"all 0.2s" }}>
+            {copied ? <><Check/> Copiado</> : <><Copy/> Copiar</>}
+          </button>
+        </div>
+        <div style={{ fontFamily:"monospace",fontSize:13,color:"var(--blue-text)",lineHeight:1.8,whiteSpace:"pre-line" }}>{DATOS_BANCO}</div>
+      </div>
 
-        {pendientes.length > 0 && (
-          <div style={{ marginBottom:20 }}>
-            <div style={{ fontSize:11,fontWeight:700,color:"var(--red)",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10 }}>⚠️ Meses con deuda pendiente</div>
-            <div style={{ display:"flex",flexWrap:"wrap",gap:8 }}>
-              {pendientes.map(op => {
-                const sel = !!mesesSel.find(m => m.key === op.key);
-                return (
-                  <button key={op.key} type="button" onClick={() => onToggle(op)}
-                          style={{ padding:"8px 14px",borderRadius:9,fontSize:13,fontWeight:sel?700:500,cursor:"pointer",display:"flex",alignItems:"center",gap:6,border:`1.5px solid ${sel?"var(--blue)":"var(--red)"}`,background:sel?"var(--blue-bg)":"var(--red-bg)",color:sel?"var(--blue-text)":"var(--red)",fontFamily:"inherit",transition:"all 0.12s" }}>
-                    {sel && <CheckIcon/>}{op.label}<span style={{ fontSize:11,opacity:0.7 }}>${op.cuota}</span>
-                  </button>
-                );
-              })}
+      {error && <div style={{ background:"var(--red-bg)",color:"var(--red)",borderRadius:9,padding:"10px 13px",fontSize:13,marginBottom:14,display:"flex",gap:8 }}><span>⚠️</span>{error}</div>}
+
+      <div style={{ marginBottom:14,position:"relative" }}>
+        <label style={{ display:"block",fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:7 }}>👤 Nombre completo *</label>
+        <input style={inp} value={form.nombre} autoFocus
+               onChange={e=>setF("nombre",e.target.value)}
+               placeholder="Escribe tu nombre para buscarte..."/>
+        {searching && <div style={{ fontSize:11,color:"var(--text3)",marginTop:4 }}>Buscando...</div>}
+        {searchResults.length > 0 && (
+          <div style={{ position:"absolute",left:0,right:0,top:"100%",marginTop:4,background:"var(--surface)",border:"0.5px solid var(--border2)",borderRadius:10,boxShadow:"0 4px 20px rgba(0,0,0,0.12)",zIndex:20,overflow:"hidden" }}>
+            {searchResults.map(r => (
+              <button key={r.id} type="button" onClick={() => onSelectResident(r)}
+                      style={{ display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%",padding:"11px 14px",fontSize:13,borderBottom:"0.5px solid var(--border)",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",gap:8 }}
+                      onMouseOver={e=>e.currentTarget.style.background="var(--blue-bg)"}
+                      onMouseOut={e=>e.currentTarget.style.background="none"}>
+                <span style={{ fontWeight:600,color:"var(--text)" }}>{r.residente.split("/")[0].trim()}</span>
+                <span style={{ fontSize:11,color:"var(--text3)",flexShrink:0 }}>{r.calle} · L{r.lote}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginBottom:0 }}>
+        <label style={{ display:"block",fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:7 }}>📱 Número de WhatsApp *</label>
+        <input style={inp} type="tel" value={form.telefono} onChange={e=>setF("telefono",e.target.value)} placeholder="55 1234 5678"/>
+        <div style={{ fontSize:11,color:"var(--text3)",marginTop:5 }}>Recibirás la confirmación de tu pago aquí</div>
+      </div>
+
+      <button type="button" onClick={onNext}
+              style={{ width:"100%",padding:"13px",borderRadius:11,border:"none",background:"var(--blue)",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginTop:20,boxShadow:"0 4px 14px rgba(24,95,165,0.25)" }}>
+        Continuar →
+      </button>
+    </div>
+  );
+}
+
+// ── Paso 2: Propiedades con meses por propiedad ────────────────
+function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, onBack, error }) {
+  const opciones = getMeses2026();
+  const [propActiva, setPropActiva] = useState(0);
+  const fileRefs = useRef({});
+
+  const addProp = () => {
+    setPropiedades(prev => [...prev, emptyProp()]);
+    setPropActiva(propiedades.length);
+  };
+  const removeProp = (idx) => {
+    setPropiedades(prev => prev.filter((_,i)=>i!==idx));
+    setPropActiva(Math.max(0, propActiva-1));
+  };
+  const updateProp = (idx,k,v) => setPropiedades(prev=>prev.map((p,i)=>i===idx?{...p,[k]:v}:p));
+  const toggleMes  = (idx,op) => setPropiedades(prev=>prev.map((p,i)=>i===idx?{...p,mesesSel:p.mesesSel.find(m=>m.key===op.key)?p.mesesSel.filter(m=>m.key!==op.key):[...p.mesesSel,op]}:p));
+
+  const autofillProp = async (idx, calle, lote, mza) => {
+    if (!calle||!lote) return;
+    try {
+      const p=new URLSearchParams({calle,lote}); if(mza) p.set("mza",mza);
+      const {data}=await axios.get(`${API}/api/residents/by-location?${p}`);
+      if(data) updateProp(idx,"residentData",data);
+    } catch {}
+  };
+
+  const handleImage = async (idx, file) => {
+    if(!file) return;
+    if(file.size>5*1024*1024) return;
+    const b64 = await fileToBase64(file);
+    setPropiedades(prev=>prev.map((p,i)=>i===idx?{...p,imageBase64:b64,imagePreview:URL.createObjectURL(file)}:p));
+  };
+
+  // Selección rápida de propiedad del residente
+  const selectResidentProp = (idx, rd) => {
+    setPropiedades(prev=>prev.map((p,i)=>i===idx?{...p,calle:rd.calle,lote:rd.lote,mza:rd.mza||"",resident_id:rd.id,residentData:rd}:p));
+  };
+
+  const prop = propiedades[propActiva] || propiedades[0];
+  if (!prop) return null;
+
+  const inp = {width:"100%",padding:"9px 11px",borderRadius:9,border:"0.5px solid var(--border2)",fontSize:13,background:"var(--surface)",color:"var(--text)",outline:"none",fontFamily:"inherit",boxSizing:"border-box"};
+
+  return (
+    <div>
+      {error && <div style={{background:"var(--red-bg)",color:"var(--red)",borderRadius:9,padding:"10px 13px",fontSize:13,marginBottom:14,display:"flex",gap:8}}><span>⚠️</span>{error}</div>}
+
+      {/* Tabs de propiedades */}
+      {propiedades.length > 1 && (
+        <div style={{ display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:4 }}>
+          {propiedades.map((p,i) => (
+            <button key={p.id} type="button" onClick={()=>setPropActiva(i)}
+                    style={{ flexShrink:0,padding:"6px 14px",borderRadius:8,border:`1.5px solid ${i===propActiva?"var(--blue)":"var(--border2)"}`,background:i===propActiva?"var(--blue-bg)":"var(--surface)",color:i===propActiva?"var(--blue-text)":"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:5 }}>
+              {p.residentData ? <Check/> : null}
+              {p.calle||`Propiedad ${i+1}`}{p.lote?` L${p.lote}`:""}
+              {p.mesesSel.length>0 && <span style={{background:"var(--blue)",color:"#fff",borderRadius:10,fontSize:10,padding:"1px 5px"}}>{p.mesesSel.length}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Propiedad activa */}
+      <div style={{ background:"var(--surface2)",borderRadius:13,padding:"14px",marginBottom:14,border:`1px solid ${prop.residentData?"var(--green-border)":"var(--border)"}` }}>
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12 }}>
+          <div style={{ fontSize:13,fontWeight:700,color:"var(--text2)" }}>
+            🏠 {prop.residentData ? (
+              <span style={{color:"var(--green)"}}><Check/> {prop.residentData.residente.split("/")[0].trim()}</span>
+            ) : `Propiedad ${propActiva+1}`}
+          </div>
+          {propiedades.length>1 && (
+            <button type="button" onClick={()=>removeProp(propActiva)}
+                    style={{background:"var(--red-bg)",border:"none",color:"var(--red)",borderRadius:7,cursor:"pointer",padding:"4px 8px",display:"flex",alignItems:"center",gap:4,fontSize:11,fontFamily:"inherit"}}>
+              <Trash/> Quitar
+            </button>
+          )}
+        </div>
+
+        {/* Si hay propiedades del residente encontrado, mostrar selector rápido */}
+        {residenteOpciones.length > 0 && !prop.residentData && (
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:7 }}>Selecciona tu propiedad</div>
+            <div style={{ display:"flex",flexWrap:"wrap",gap:6 }}>
+              {residenteOpciones.map(rd => (
+                <button key={rd.id} type="button" onClick={()=>selectResidentProp(propActiva,rd)}
+                        style={{ padding:"7px 12px",borderRadius:8,border:"0.5px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:12,cursor:"pointer",fontFamily:"inherit" }}
+                        onMouseOver={e=>e.currentTarget.style.background="var(--blue-bg)"}
+                        onMouseOut={e=>e.currentTarget.style.background="var(--surface)"}>
+                  {rd.calle} · L{rd.lote} Mza {rd.mza}
+                </button>
+              ))}
+              <button type="button" onClick={()=>updateProp(propActiva,"residentData",{manual:true})}
+                      style={{ padding:"7px 12px",borderRadius:8,border:"0.5px dashed var(--border2)",background:"transparent",color:"var(--text3)",fontSize:12,cursor:"pointer",fontFamily:"inherit" }}>
+                + Otro domicilio
+              </button>
             </div>
           </div>
         )}
 
-        <div style={{ fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10 }}>
-          {pendientes.length > 0 ? "Otros meses" : "Selecciona el mes"}
-        </div>
-        <div style={{ display:"flex",flexWrap:"wrap",gap:8,marginBottom:24 }}>
-          {opciones.filter(op => !pendientes.find(p => p.key === op.key)).map(op => {
-            const sel = !!mesesSel.find(m => m.key === op.key);
-            return (
-              <button key={op.key} type="button" onClick={() => onToggle(op)}
-                      style={{ padding:"7px 13px",borderRadius:9,fontSize:13,fontWeight:sel?600:400,cursor:"pointer",display:"flex",alignItems:"center",gap:6,border:`1px solid ${sel?"var(--blue)":"var(--border2)"}`,background:sel?"var(--blue-bg)":"var(--surface)",color:sel?"var(--blue-text)":"var(--text2)",fontFamily:"inherit",transition:"all 0.12s" }}>
-                {sel && <CheckIcon/>}{op.label}
-              </button>
-            );
-          })}
+        {/* Campos manuales si no autocompletó o eligió "otro" */}
+        {(!prop.residentData || prop.residentData?.manual) && (
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12 }}>
+            <div>
+              <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:4}}>Calle *</div>
+              <select style={{...inp,cursor:"pointer"}} value={prop.calle}
+                      onChange={e=>{updateProp(propActiva,"calle",e.target.value);autofillProp(propActiva,e.target.value,prop.lote,prop.mza);}}>
+                <option value="">Calle...</option>
+                {CALLES.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:4}}>Casa *</div>
+              <input style={inp} value={prop.lote} placeholder="Ej: 12"
+                     onChange={e=>{updateProp(propActiva,"lote",e.target.value);autofillProp(propActiva,prop.calle,e.target.value,prop.mza);}}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:4}}>Manzana</div>
+              <input style={inp} value={prop.mza} placeholder="Ej: 3"
+                     onChange={e=>{updateProp(propActiva,"mza",e.target.value);autofillProp(propActiva,prop.calle,prop.lote,e.target.value);}}/>
+            </div>
+          </div>
+        )}
+
+        {/* Meses pendientes info */}
+        {prop.residentData && !prop.residentData.manual && (()=>{
+          const pend = calcPendientes(prop.residentData);
+          return pend.length > 0 ? (
+            <div style={{background:"var(--red-bg)",borderRadius:8,padding:"10px 12px",marginBottom:12}}>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--red)",marginBottom:6}}>⚠️ Meses con adeudo detectados:</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                {pend.map(m=><span key={m.key} style={{fontSize:11,background:"#fff",color:"var(--red)",padding:"2px 8px",borderRadius:5,fontWeight:600}}>{m.label} · ${m.cuota}</span>)}
+              </div>
+            </div>
+          ) : null;
+        })()}
+
+        {/* Selector de meses de 2026 */}
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:8}}>📅 Meses a pagar (2026) *</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {opciones.map(op=>{
+              const sel=!!prop.mesesSel.find(m=>m.key===op.key);
+              const isPend=prop.residentData&&!prop.residentData.manual&&calcPendientes(prop.residentData).find(p=>p.key===op.key);
+              return (
+                <button key={op.key} type="button" onClick={()=>toggleMes(propActiva,op)}
+                        style={{padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:sel?700:500,cursor:"pointer",display:"flex",alignItems:"center",gap:5,border:`1.5px solid ${sel?"var(--blue)":isPend?"var(--red)":"var(--border2)"}`,background:sel?"var(--blue-bg)":isPend?"var(--red-bg)":"var(--surface)",color:sel?"var(--blue-text)":isPend?"var(--red)":"var(--text2)",fontFamily:"inherit",transition:"all 0.1s"}}>
+                  {sel&&<Check/>}{op.label}
+                </button>
+              );
+            })}
+          </div>
+          {prop.mesesSel.length>0&&(
+            <div style={{marginTop:8,display:"flex",flexWrap:"wrap",gap:4}}>
+              {prop.mesesSel.sort((a,b)=>a.mes-b.mes).map(m=>(
+                <span key={m.key} style={{fontSize:11,background:"var(--blue-bg)",color:"var(--blue-text)",padding:"3px 9px",borderRadius:6,display:"inline-flex",alignItems:"center",gap:4,fontWeight:600}}>
+                  {m.label}
+                  <button type="button" onClick={()=>toggleMes(propActiva,m)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--blue)",fontSize:12,lineHeight:1,padding:0}}>✕</button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
-        <div style={{ borderTop:"0.5px solid var(--border)",paddingTop:16,display:"flex",justifyContent:"space-between",alignItems:"center",gap:12 }}>
-          <div>
-            {mesesSel.length > 0
-              ? <><div style={{ fontSize:13,fontWeight:600,color:"var(--blue-text)" }}>{mesesSel.length} mes{mesesSel.length>1?"es":""} seleccionado{mesesSel.length>1?"s":""}</div><div style={{ fontSize:11,color:"var(--text3)" }}>Cuota estimada: ${total.toLocaleString()} MXN</div></>
-              : <div style={{ fontSize:13,color:"var(--text3)" }}>Ningún mes seleccionado</div>}
+        {/* Comprobante OBLIGATORIO */}
+        <div>
+          <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:7}}>
+            📷 Comprobante de pago *{" "}
+            <span style={{fontSize:10,fontWeight:500,color:"var(--red)"}}>obligatorio</span>
           </div>
-          <button type="button" onClick={onClose} disabled={mesesSel.length === 0}
-                  style={{ padding:"10px 24px",borderRadius:9,fontSize:14,fontWeight:600,border:"none",background:mesesSel.length?"var(--blue)":"var(--surface2)",color:mesesSel.length?"#fff":"var(--text3)",cursor:mesesSel.length?"pointer":"not-allowed",fontFamily:"inherit",flexShrink:0 }}>
-            Confirmar
-          </button>
+          {!prop.imagePreview ? (
+            <div onClick={()=>fileRefs.current[propActiva]?.click()}
+                 style={{border:`1.5px dashed ${true?"var(--border2)":"var(--red)"}`,borderRadius:10,padding:"18px",textAlign:"center",cursor:"pointer",background:"var(--surface2)",transition:"all 0.15s"}}
+                 onMouseOver={e=>{e.currentTarget.style.borderColor="var(--blue)";e.currentTarget.style.background="var(--blue-bg)";}}
+                 onMouseOut={e=>{e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.background="var(--surface2)";}}
+                 onDrop={e=>{e.preventDefault();handleImage(propActiva,e.dataTransfer.files[0]);}}
+                 onDragOver={e=>e.preventDefault()}>
+              <div style={{fontSize:24,marginBottom:5}}>📷</div>
+              <div style={{fontSize:13,color:"var(--text2)",fontWeight:500,marginBottom:2}}>Toca para adjuntar tu comprobante</div>
+              <div style={{fontSize:11,color:"var(--text3)"}}>JPG, PNG o PDF · Máx 5 MB</div>
+              <input ref={el=>fileRefs.current[propActiva]=el} type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={e=>handleImage(propActiva,e.target.files[0])}/>
+            </div>
+          ) : (
+            <div style={{position:"relative",borderRadius:10,overflow:"hidden",border:"0.5px solid var(--border2)"}}>
+              <img src={prop.imagePreview} alt="Comprobante" style={{width:"100%",maxHeight:160,objectFit:"cover",display:"block"}}/>
+              <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,0.55),transparent)",display:"flex",alignItems:"flex-end",justifyContent:"space-between",padding:"8px 12px"}}>
+                <span style={{fontSize:12,color:"#fff",fontWeight:600}}>✓ Comprobante adjunto</span>
+                <button type="button" onClick={()=>setPropiedades(prev=>prev.map((p,i)=>i===propActiva?{...p,imagePreview:null,imageBase64:null}:p))}
+                        style={{padding:"3px 9px",borderRadius:6,background:"rgba(255,255,255,0.2)",color:"#fff",border:"1px solid rgba(255,255,255,0.4)",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+                  Cambiar
+                </button>
+              </div>
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* Botón agregar propiedad */}
+      <button type="button" onClick={addProp}
+              style={{width:"100%",padding:"10px",borderRadius:10,border:"1.5px dashed var(--border2)",background:"transparent",color:"var(--blue)",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginBottom:16}}
+              onMouseOver={e=>{e.currentTarget.style.borderColor="var(--blue)";e.currentTarget.style.background="var(--blue-bg)";}}
+              onMouseOut={e=>{e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.background="transparent";}}>
+        + Agregar otra propiedad
+      </button>
+
+      <div style={{display:"flex",gap:10}}>
+        <button type="button" onClick={onBack} style={{flex:"0 0 auto",padding:"12px 20px",borderRadius:11,border:"0.5px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>← Atrás</button>
+        <button type="button" onClick={onNext} style={{flex:1,padding:"12px",borderRadius:11,border:"none",background:"var(--blue)",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 14px rgba(24,95,165,0.25)"}}>Revisar y enviar →</button>
       </div>
     </div>
   );
 }
 
-// ── Fila de propiedad ──────────────────────────────────────────
-function PropiedadRow({ prop, onChange, onRemove, onAutofill, canRemove, pendientersPorProp }) {
-  const inp = { width:"100%",padding:"9px 11px",borderRadius:9,border:"0.5px solid var(--border2)",fontSize:13,background:"var(--surface)",color:"var(--text)",outline:"none",fontFamily:"inherit",boxSizing:"border-box" };
-  const r = prop.residentData;
-  const misPendientes = pendientersPorProp[prop.id] || [];
+// ── Paso 3: Revisión y envío ───────────────────────────────────
+function Paso3({ form, propiedades, monto, notas, setMonto, setNotas, onSubmit, onBack, loading, error }) {
+  const totalEnvios = propiedades.reduce((s,p)=>s+(p.calle&&p.lote?p.mesesSel.length:0),0);
+  const propsValidas = propiedades.filter(p=>p.calle&&p.lote&&p.mesesSel.length>0);
+  const inp = {width:"100%",padding:"10px 12px",borderRadius:10,border:"0.5px solid var(--border2)",fontSize:14,background:"var(--surface)",color:"var(--text)",outline:"none",fontFamily:"inherit",boxSizing:"border-box"};
 
   return (
-    <div style={{ background:"var(--surface2)",borderRadius:12,padding:"14px",marginBottom:10,border:`1px solid ${r?"var(--green-border)":"var(--border)"}` }}>
-      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12 }}>
-        <div style={{ fontSize:12,fontWeight:600,color:"var(--text2)" }}>
-          {r ? (
-            <span style={{ color:"var(--green)",display:"flex",alignItems:"center",gap:5 }}>
-              <CheckIcon/> {r.residente.split("/")[0].trim()} · {r.calle} L{r.lote}
-            </span>
-          ) : "Datos de la propiedad"}
-        </div>
-        {canRemove && (
-          <button type="button" onClick={onRemove}
-                  style={{ background:"var(--red-bg)",border:"none",color:"var(--red)",borderRadius:7,cursor:"pointer",padding:"4px 8px",display:"flex",alignItems:"center",gap:4,fontSize:11,fontFamily:"inherit" }}>
-            <TrashIcon/> Quitar
-          </button>
+    <div>
+      {error && <div style={{background:"var(--red-bg)",color:"var(--red)",borderRadius:9,padding:"10px 13px",fontSize:13,marginBottom:14,display:"flex",gap:8}}><span>⚠️</span>{error}</div>}
+
+      {/* Resumen */}
+      <div style={{background:"var(--surface2)",borderRadius:13,padding:"14px",marginBottom:16}}>
+        <div style={{fontSize:13,fontWeight:700,color:"var(--text2)",marginBottom:10}}>📋 Resumen de tu pago</div>
+        <div style={{fontSize:13,marginBottom:6}}><strong>{form.nombre}</strong> · {form.telefono}</div>
+        {propsValidas.map((p,i)=>(
+          <div key={p.id} style={{background:"var(--surface)",borderRadius:9,padding:"10px 12px",marginBottom:8,border:"0.5px solid var(--border)"}}>
+            <div style={{fontWeight:600,fontSize:12,color:"var(--text2)",marginBottom:5}}>🏠 {p.calle} · L{p.lote}{p.mza?` Mza ${p.mza}`:""}</div>
+            {p.mesesSel.sort((a,b)=>a.mes-b.mes).map(m=>(
+              <div key={m.key} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0"}}>
+                <span>{m.label}</span>
+                <span style={{fontWeight:600}}>${Number(monto||0).toLocaleString()}</span>
+              </div>
+            ))}
+            {!p.imageBase64&&<div style={{fontSize:11,color:"var(--red)",marginTop:4}}>⚠️ Sin comprobante adjunto</div>}
+          </div>
+        ))}
+        {totalEnvios>1&&monto&&(
+          <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:14,borderTop:"0.5px solid var(--border)",paddingTop:8,marginTop:4,color:"var(--blue)"}}>
+            <span>Total</span><span>${(Number(monto)*totalEnvios).toLocaleString()} MXN</span>
+          </div>
         )}
       </div>
 
-      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8 }}>
-        <div>
-          <div style={{ fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:4 }}>Calle *</div>
-          <select style={{ ...inp,cursor:"pointer" }} value={prop.calle}
-                  onChange={e => { onChange("calle",e.target.value); onAutofill(e.target.value,prop.lote,prop.mza); }}>
-            <option value="">Calle...</option>
-            {CALLES.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-        <div>
-          <div style={{ fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:4 }}>Casa *</div>
-          <input style={inp} value={prop.lote} placeholder="Ej: 12"
-                 onChange={e => { onChange("lote",e.target.value); onAutofill(prop.calle,e.target.value,prop.mza); }}/>
-        </div>
-        <div>
-          <div style={{ fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:4 }}>Manzana</div>
-          <input style={inp} value={prop.mza} placeholder="Ej: 3"
-                 onChange={e => { onChange("mza",e.target.value); onAutofill(prop.calle,prop.lote,e.target.value); }}/>
+      {/* Monto */}
+      <div style={{marginBottom:14}}>
+        <label style={{display:"block",fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:7}}>💰 Monto pagado por mes (MXN) *</label>
+        <div style={{position:"relative"}}>
+          <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--text3)",fontSize:15,fontWeight:500}}>$</span>
+          <input style={{...inp,paddingLeft:26}} type="number" min="1" step="1" value={monto} onChange={e=>setMonto(e.target.value)} placeholder="400" autoFocus/>
         </div>
       </div>
 
-      {r && misPendientes.length > 0 && (
-        <div style={{ marginTop:10,paddingTop:10,borderTop:"0.5px solid var(--green-border)" }}>
-          <div style={{ fontSize:11,color:"var(--red)",fontWeight:600,marginBottom:5 }}>Meses pendientes:</div>
-          <div style={{ display:"flex",flexWrap:"wrap",gap:4 }}>
-            {misPendientes.map(m => (
-              <span key={m.key} style={{ fontSize:11,background:"var(--red-bg)",color:"var(--red)",padding:"2px 8px",borderRadius:5,fontWeight:500 }}>
-                {m.label} · ${m.cuota}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Notas */}
+      <div style={{marginBottom:20}}>
+        <label style={{display:"block",fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:7}}>📝 Notas adicionales (opcional)</label>
+        <textarea style={{...inp,resize:"none",height:64}} value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Ej: Pago en efectivo, referencia del banco..."/>
+      </div>
+
+      <div style={{display:"flex",gap:10}}>
+        <button type="button" onClick={onBack} style={{flex:"0 0 auto",padding:"12px 20px",borderRadius:11,border:"0.5px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>← Atrás</button>
+        <button type="button" onClick={onSubmit} disabled={loading}
+                style={{flex:1,padding:"13px",borderRadius:11,border:"none",background:loading?"var(--surface2)":"var(--blue)",color:loading?"var(--text3)":"#fff",fontSize:15,fontWeight:700,cursor:loading?"not-allowed":"pointer",fontFamily:"inherit",boxShadow:loading?"none":"0 4px 14px rgba(24,95,165,0.25)"}}>
+          {loading?"Enviando...":totalEnvios===0?"Selecciona meses para continuar":`Enviar pago${totalEnvios>1?` · ${totalEnvios} registros`:""}`}
+        </button>
+      </div>
     </div>
   );
 }
 
-// ── App ────────────────────────────────────────────────────────
+// ── App principal ──────────────────────────────────────────────
 export default function App() {
-  const draft    = loadDraft();
-  const emptyForm = { nombre:"", telefono:"", monto:"", notas:"" };
-
-  const [step,setStep]         = useState("form");
-  const [form,setForm]         = useState(draft?.form || emptyForm);
-  const [propiedades,setProps] = useState(draft?.propiedades || [emptyProp()]);
-  const [mesesSel,setMesesSel] = useState(draft?.meses || []);
-  const [pendientersPorProp,setPendientesPorProp] = useState({});
-  const [allPendientes,setAllPendientes]           = useState([]);
-  const [searchResults,setSearchResults]           = useState([]);
-  const [searching,setSearching]                   = useState(false);
-  const [imagePreview,setImagePreview]             = useState(null);
-  const [imageBase64,setImageBase64]               = useState(null);
-  const [showModal,setShowModal]                   = useState(false);
-  const [loading,setLoading]                       = useState(false);
-  const [error,setError]                           = useState("");
-  const [dupWarning,setDupWarning]                 = useState([]);
+  const draft = loadDraft();
+  const [pasoActual, setPasoActual] = useState(1); // 1, 2, 3
+  const [step, setStep]             = useState("form"); // form | success
+  const [form, setForm]             = useState(draft?.form || { nombre:"", telefono:"" });
+  const [propiedades, setPropiedades] = useState(draft?.propiedades || [emptyProp()]);
+  const [monto, setMonto]           = useState(draft?.monto || "400");
+  const [notas, setNotas]           = useState(draft?.notas || "");
+  const [residenteOpciones, setResidenteOpciones] = useState([]); // propiedades del residente encontrado
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching]   = useState(false);
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState("");
 
   const searchTimer = useRef(null);
-  const fileInputRef = useRef(null);
-  const opciones = getMesesOpciones();
+  const setF = (k,v) => setForm(f=>({...f,[k]:v}));
 
-  const setF = (k,v) => setForm(f => ({...f,[k]:v}));
+  useEffect(() => { saveDraft({ form, propiedades, monto, notas }); }, [form, propiedades, monto, notas]);
 
-  // Borrador
-  useEffect(() => { saveDraft({ form, propiedades, meses:mesesSel }); }, [form, propiedades, mesesSel]);
-
-  // Recalcular pendientes cuando cambian las propiedades
-  useEffect(() => {
-    const byProp = {};
-    const all    = [];
-
-    propiedades.forEach(prop => {
-      // Proteger contra residentData sin pagos
-      const r = prop.residentData;
-      if (!r) return;
-
-      const meses = calcMesesPendientes(r);
-      // Usar IDs únicos por propiedad para no mezclar entre propiedades
-      byProp[prop.id] = meses;
-      meses.forEach(m => {
-        // Para allPendientes usamos key global (sin id de prop)
-        if (!all.find(x => x.key === m.key)) all.push(m);
-      });
-    });
-
-    setPendientesPorProp(byProp);
-    setAllPendientes(all);
-
-    // Preseleccionar el mes pendiente más reciente si aún no hay selección
-    if (mesesSel.length === 0 && all.length > 0) {
-      setMesesSel([all[all.length - 1]]);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [propiedades]);
-
-  // ── Búsqueda de nombre ────────────────────────────────────────
+  // ── Búsqueda nombre ──────────────────────────────────────────
   const handleNombreChange = (v) => {
-    setF("nombre", v);
+    setF("nombre",v);
     clearTimeout(searchTimer.current);
-    if (v.length < 3) { setSearchResults([]); return; }
+    if(v.length<3){setSearchResults([]);return;}
     setSearching(true);
-    searchTimer.current = setTimeout(async () => {
-      try {
-        const { data } = await axios.get(`${API}/api/residents/search?q=${encodeURIComponent(v)}`);
-        setSearchResults(data);
-      } catch { setSearchResults([]); }
-      finally { setSearching(false); }
-    }, 400);
+    searchTimer.current = setTimeout(async()=>{
+      try{const{data}=await axios.get(`${API}/api/residents/search?q=${encodeURIComponent(v)}`);setSearchResults(data);}
+      catch{setSearchResults([]);}finally{setSearching(false);}
+    },400);
   };
 
-  // Al seleccionar un resultado: obtener datos completos (con pagos25/pagos26)
-  const selectResident = async (r) => {
+  const onSelectResident = async (r) => {
     setSearchResults([]);
     setF("nombre", r.residente.split("/")[0].trim());
 
     try {
-      // Obtener datos completos del residente (incluyendo pagos25/pagos26)
-      const params = new URLSearchParams({ calle:r.calle, lote:r.lote });
-      if (r.mza) params.set("mza", r.mza);
-      const { data: fullData } = await axios.get(`${API}/api/residents/by-location?${params}`);
-      const residentData = fullData || r; // fallback al resultado básico si falla
+      // Obtener datos completos
+      const params=new URLSearchParams({calle:r.calle,lote:r.lote});
+      if(r.mza) params.set("mza",r.mza);
+      const{data:full}=await axios.get(`${API}/api/residents/by-location?${params}`);
+      const rd = full || r;
 
-      setProps(prev => {
-        const idx = prev.findIndex(p => !p.residentData);
-        const target = idx >= 0 ? idx : 0;
-        return prev.map((p,i) => i === target
-          ? { ...p, calle:residentData.calle, lote:residentData.lote, mza:residentData.mza||"", resident_id:residentData.id, residentData }
-          : p
-        );
-      });
+      // Autofill teléfono si está en BD
+      if(rd.telefono && !form.telefono) setF("telefono", rd.telefono);
+
+      // Buscar si tiene más propiedades (mismo nombre)
+      try {
+        const{data:todos}=await axios.get(`${API}/api/residents/search?q=${encodeURIComponent(r.residente.split("/")[0].trim())}`);
+        if(todos.length>1){
+          // Cargar datos completos de cada propiedad
+          const completos = await Promise.all(todos.map(async t=>{
+            try{const p=new URLSearchParams({calle:t.calle,lote:t.lote});if(t.mza)p.set("mza",t.mza);const{data:d}=await axios.get(`${API}/api/residents/by-location?${p}`);return d||t;}catch{return t;}
+          }));
+          setResidenteOpciones(completos);
+        } else {
+          setResidenteOpciones([]);
+        }
+      } catch {}
+
+      // Llenar la primera propiedad
+      setPropiedades(prev=>prev.map((p,i)=>i===0?{...p,calle:rd.calle,lote:rd.lote,mza:rd.mza||"",resident_id:rd.id,residentData:rd}:p));
     } catch {
-      // Si falla el fetch completo, al menos rellenar con lo que tenemos
-      setProps(prev => {
-        const idx = prev.findIndex(p => !p.residentData);
-        const target = idx >= 0 ? idx : 0;
-        return prev.map((p,i) => i === target
-          ? { ...p, calle:r.calle, lote:r.lote, mza:r.mza||"", resident_id:r.id, residentData:{ ...r, pagos25:{}, pagos26:{} } }
-          : p
-        );
-      });
+      setF("nombre", r.residente.split("/")[0].trim());
     }
   };
 
-  // ── Gestión de propiedades ────────────────────────────────────
-  const updateProp = (id, key, val) => setProps(prev => prev.map(p => p.id===id ? {...p,[key]:val} : p));
-  const addProp    = () => setProps(prev => [...prev, emptyProp()]);
-  const removeProp = (id) => setProps(prev => prev.filter(p => p.id !== id));
-
-  const autofillProp = async (id, calle, lote, mza) => {
-    if (!calle || !lote) return;
-    try {
-      const p = new URLSearchParams({ calle, lote });
-      if (mza) p.set("mza", mza);
-      const { data } = await axios.get(`${API}/api/residents/by-location?${p}`);
-      if (data) {
-        setProps(prev => prev.map(p => p.id===id
-          ? { ...p, resident_id:data.id, residentData:data, calle:data.calle, lote:data.lote, mza:data.mza||"" }
-          : p
-        ));
-        if (!form.nombre) setF("nombre", data.residente.split("/")[0].trim());
-      }
-    } catch {}
+  // ── Validaciones por paso ────────────────────────────────────
+  const validarPaso1 = () => {
+    if(!form.nombre.trim()) return setError("Escribe tu nombre completo"), false;
+    if(!form.telefono.trim()) return setError("Escribe tu número de WhatsApp"), false;
+    setError(""); return true;
   };
 
-  // ── Imagen ────────────────────────────────────────────────────
-  const handleImage = async (file) => {
-    if (!file) return;
-    if (file.size > 5*1024*1024) { setError("La imagen no debe superar 5 MB"); return; }
-    setImageBase64(await fileToBase64(file));
-    setImagePreview(URL.createObjectURL(file));
-    setError("");
+  const validarPaso2 = () => {
+    const propsValidas = propiedades.filter(p=>p.calle&&p.lote);
+    if(propsValidas.length===0) return setError("Agrega al menos una propiedad con calle y número de casa"), false;
+    for(const p of propsValidas){
+      if(p.mesesSel.length===0) return setError(`Selecciona al menos un mes para ${p.calle||"tu propiedad"}`), false;
+      if(!p.imageBase64) return setError(`El comprobante de pago es obligatorio para ${p.calle} L${p.lote}`), false;
+    }
+    setError(""); return true;
   };
 
-  // ── Toggle mes ────────────────────────────────────────────────
-  const toggleMes = (op) => setMesesSel(prev =>
-    prev.find(m => m.key === op.key)
-      ? prev.filter(m => m.key !== op.key)
-      : [...prev, op]
-  );
+  const validarPaso3 = () => {
+    if(!monto||Number(monto)<=0) return setError("Indica el monto pagado por mes"), false;
+    setError(""); return true;
+  };
 
-  // ── Envío ─────────────────────────────────────────────────────
-  const propsValidas = propiedades.filter(p => p.calle && p.lote);
+  const handleNext = () => {
+    if(pasoActual===1 && validarPaso1()) { setError(""); setPasoActual(2); }
+    if(pasoActual===2 && validarPaso2()) { setError(""); setPasoActual(3); }
+  };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    if (!form.nombre.trim())        return setError("Escribe tu nombre completo");
-    if (!form.telefono.trim())      return setError("Escribe tu número de WhatsApp");
-    if (propsValidas.length === 0)  return setError("Agrega al menos una propiedad con calle y número de casa");
-    if (mesesSel.length === 0)      return setError("Selecciona al menos un mes a pagar");
-    if (!form.monto || Number(form.monto) <= 0) return setError("Indica el monto pagado");
+  const handleSubmit = async () => {
+    if(!validarPaso3()) return;
     setLoading(true);
-
-    // Verificar duplicados
-    const dups = [];
-    for (const prop of propsValidas) {
-      if (!prop.resident_id) continue;
-      for (const op of mesesSel) {
-        try {
-          const { data } = await axios.get(`${API}/api/payments/check-duplicate?resident_id=${prop.resident_id}&mes=${op.mes}&anio=${op.anio}`);
-          if (data.exists) dups.push(`${op.label} (${prop.calle} L${prop.lote})`);
-        } catch {}
-      }
-    }
-    if (dups.length > 0) { setDupWarning(dups); setLoading(false); return; }
-
-    await doSubmit(propsValidas);
-  };
-
-  const doSubmit = async (pvs) => {
-    setLoading(true); setDupWarning([]);
-    const props = pvs || propsValidas;
+    const propsValidas = propiedades.filter(p=>p.calle&&p.lote&&p.mesesSel.length>0);
     try {
       await Promise.all(
-        props.flatMap(prop =>
-          mesesSel.map(op =>
-            axios.post(`${API}/api/payments/submit`, {
-              resident_id:     prop.resident_id || null,
+        propsValidas.flatMap(prop =>
+          prop.mesesSel.map(op =>
+            axios.post(`${API}/api/payments/submit`,{
+              resident_id:     prop.resident_id||null,
               nombre:          form.nombre.trim(),
               telefono:        form.telefono.trim(),
               calle:           prop.calle,
@@ -367,9 +492,9 @@ export default function App() {
               mza:             prop.mza.trim(),
               mes:             op.mes,
               anio:            op.anio,
-              monto:           Number(form.monto),
-              comprobante_b64: imageBase64 || null,
-              notas:           form.notas.trim() || null,
+              monto:           Number(monto),
+              comprobante_b64: prop.imageBase64||null,
+              notas:           notas.trim()||null,
             })
           )
         )
@@ -382,254 +507,108 @@ export default function App() {
 
   const reset = () => {
     clearDraft();
-    setStep("form"); setForm(emptyForm); setProps([emptyProp()]);
-    setImagePreview(null); setImageBase64(null); setMesesSel([]);
-    setPendientesPorProp({}); setAllPendientes([]); setError(""); setDupWarning([]);
+    setStep("form"); setPasoActual(1);
+    setForm({nombre:"",telefono:""});
+    setPropiedades([emptyProp()]);
+    setMonto("400"); setNotas("");
+    setResidenteOpciones([]); setError("");
   };
 
-  const totalEnvios = propsValidas.length * mesesSel.length;
-  const totalMonto  = Number(form.monto || 0) * totalEnvios;
+  const propsValidas = propiedades.filter(p=>p.calle&&p.lote&&p.mesesSel.length>0);
 
   // ── Éxito ─────────────────────────────────────────────────────
-  if (step === "success") return (
-    <div style={{ minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem" }}>
-      <div style={{ background:"var(--surface)",border:"0.5px solid var(--border)",borderRadius:20,width:"100%",maxWidth:420,padding:"2.5rem 2rem",textAlign:"center",boxShadow:"0 4px 24px rgba(0,0,0,0.08)" }}>
-        <div style={{ width:72,height:72,borderRadius:"50%",background:"var(--green-bg)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",fontSize:32 }}>✅</div>
-        <div style={{ fontSize:20,fontWeight:700,marginBottom:8 }}>¡Pago registrado!</div>
-        <p style={{ fontSize:13,color:"var(--text2)",lineHeight:1.7,marginBottom:20 }}>
+  if(step==="success") return (
+    <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem"}}>
+      <div style={{background:"var(--surface)",border:"0.5px solid var(--border)",borderRadius:20,width:"100%",maxWidth:420,padding:"2.5rem 2rem",textAlign:"center",boxShadow:"0 4px 24px rgba(0,0,0,0.08)"}}>
+        <div style={{width:72,height:72,borderRadius:"50%",background:"var(--green-bg)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",fontSize:32}}>✅</div>
+        <div style={{fontSize:20,fontWeight:700,marginBottom:8}}>¡Pago registrado!</div>
+        <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.7,marginBottom:12}}>
           Tu comprobante fue enviado a la administración.<br/>
           Recibirás confirmación por WhatsApp al <strong>{form.telefono}</strong>.
         </p>
-        <div style={{ background:"var(--surface2)",borderRadius:12,padding:"14px 16px",marginBottom:24,textAlign:"left" }}>
-          {propsValidas.map(prop => (
-            <div key={prop.id} style={{ marginBottom:mesesSel.length>1?10:0 }}>
-              <div style={{ fontSize:12,fontWeight:600,color:"var(--text2)",marginBottom:4 }}>📍 {prop.calle} · L{prop.lote}{prop.mza?` Mza ${prop.mza}`:""}</div>
-              {mesesSel.sort((a,b)=>a.anio-b.anio||a.mes-b.mes).map(m => (
-                <div key={m.key} style={{ display:"flex",justifyContent:"space-between",fontSize:13,padding:"2px 0 2px 12px" }}>
-                  <span>{m.label}</span>
-                  <span style={{ fontWeight:500 }}>${Number(form.monto).toLocaleString()}</span>
+        <div style={{background:"var(--amber-bg)",borderRadius:10,padding:"12px 14px",marginBottom:20,textAlign:"left"}}>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--amber)",marginBottom:4}}>📅 Fecha límite de pago</div>
+          <div style={{fontSize:12,color:"var(--amber)"}}>
+            Recuerda que la fecha límite de pago mensual es el <strong>día 12 de cada mes</strong>.
+          </div>
+        </div>
+        <div style={{background:"var(--surface2)",borderRadius:10,padding:"12px 14px",marginBottom:20,textAlign:"left"}}>
+          {propsValidas.map(prop=>(
+            <div key={prop.id} style={{marginBottom:8}}>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:4}}>📍 {prop.calle} · L{prop.lote}</div>
+              {prop.mesesSel.sort((a,b)=>a.mes-b.mes).map(m=>(
+                <div key={m.key} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0 2px 10px"}}>
+                  <span>{m.label}</span><span style={{fontWeight:600}}>${Number(monto).toLocaleString()}</span>
                 </div>
               ))}
             </div>
           ))}
-          <div style={{ borderTop:"0.5px solid var(--border)",marginTop:10,paddingTop:10,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:14 }}>
-            <span>Total</span>
-            <span style={{ color:"var(--blue)" }}>${totalMonto.toLocaleString()} MXN</span>
+          <div style={{borderTop:"0.5px solid var(--border)",marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:13,color:"var(--blue)"}}>
+            <span>Total</span><span>${(Number(monto)*propsValidas.reduce((s,p)=>s+p.mesesSel.length,0)).toLocaleString()} MXN</span>
           </div>
         </div>
-        <button onClick={reset} style={{ width:"100%",padding:"12px",borderRadius:10,border:"none",background:"var(--blue)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit" }}>
+        <button onClick={reset} style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:"var(--blue)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
           Registrar otro pago
         </button>
       </div>
     </div>
   );
 
-  // ── Formulario ─────────────────────────────────────────────────
-  const inp = { width:"100%",padding:"10px 12px",borderRadius:10,border:"0.5px solid var(--border2)",fontSize:14,background:"var(--surface)",color:"var(--text)",outline:"none",fontFamily:"inherit",boxSizing:"border-box",transition:"border-color 0.15s" };
-  const lbl = { display:"block",fontSize:12,fontWeight:600,color:"var(--text2)",marginBottom:6 };
-  const sec = { background:"var(--surface)",border:"0.5px solid var(--border)",borderRadius:16,overflow:"hidden",marginBottom:12 };
-  const secH = (n, t) => (
-    <div style={{ padding:"13px 16px",borderBottom:"0.5px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",gap:8 }}>
-      <span style={{ width:22,height:22,borderRadius:"50%",background:"var(--blue)",color:"#fff",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}>{n}</span>
-      <span style={{ fontSize:13,fontWeight:600 }}>{t}</span>
-    </div>
-  );
-
+  // ── Indicador de pasos ─────────────────────────────────────────
+  const pasos = ["Tus datos","Propiedades","Confirmar"];
   return (
-    <div style={{ minHeight:"100vh",background:"var(--bg)",display:"flex",flexDirection:"column",alignItems:"center",padding:"2rem 1rem 5rem" }}>
+    <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",flexDirection:"column",alignItems:"center",padding:"1.5rem 1rem 5rem"}}>
 
       {/* Header */}
-      <div style={{ width:"100%",maxWidth:500,marginBottom:20 }}>
-        <div style={{ display:"flex",alignItems:"center",gap:10 }}>
-          <div style={{ width:38,height:38,borderRadius:10,background:"var(--blue)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}>
+      <div style={{width:"100%",maxWidth:500,marginBottom:20}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+          <div style={{width:38,height:38,borderRadius:10,background:"var(--blue)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" width="19" height="19"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           </div>
           <div>
-            <div style={{ fontSize:16,fontWeight:700 }}>Fraccionamiento</div>
-            <div style={{ fontSize:11,color:"var(--text3)" }}>Registro de cuotas mensuales</div>
+            <div style={{fontSize:16,fontWeight:700}}>Fraccionamiento</div>
+            <div style={{fontSize:11,color:"var(--text3)"}}>Registro de cuotas mensuales</div>
           </div>
+        </div>
+        {/* Progress steps */}
+        <div style={{display:"flex",alignItems:"center",gap:0}}>
+          {pasos.map((p,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",flex:i<pasos.length-1?1:"initial"}}>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                <div style={{width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,flexShrink:0,
+                  background:i+1<pasoActual?"var(--green)":i+1===pasoActual?"var(--blue)":"var(--surface2)",
+                  color:i+1<=pasoActual?"#fff":"var(--text3)",
+                  border:i+1===pasoActual?"2px solid var(--blue)":"2px solid transparent"}}>
+                  {i+1<pasoActual?"✓":i+1}
+                </div>
+                <div style={{fontSize:9,fontWeight:600,color:i+1===pasoActual?"var(--blue)":"var(--text3)",whiteSpace:"nowrap"}}>{p}</div>
+              </div>
+              {i<pasos.length-1&&<div style={{flex:1,height:2,background:i+1<pasoActual?"var(--green)":"var(--surface2)",margin:"0 4px",marginBottom:14}}/>}
+            </div>
+          ))}
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} style={{ width:"100%",maxWidth:500,display:"flex",flexDirection:"column" }}>
-
-        {error && (
-          <div style={{ background:"var(--red-bg)",color:"var(--red)",borderRadius:10,padding:"11px 14px",fontSize:13,marginBottom:14,display:"flex",alignItems:"center",gap:8 }}>
-            <span style={{ fontSize:16,flexShrink:0 }}>⚠️</span>{error}
-          </div>
-        )}
-
-        {dupWarning.length > 0 && (
-          <div style={{ background:"var(--amber-bg)",color:"var(--amber)",borderRadius:10,padding:"14px",fontSize:13,marginBottom:14 }}>
-            <div style={{ fontWeight:700,marginBottom:6 }}>⚠️ Posible pago duplicado</div>
-            <p style={{ marginBottom:10,lineHeight:1.5 }}>Ya existe un pago para: <strong>{dupWarning.join(", ")}</strong>. ¿Enviar de todas formas?</p>
-            <div style={{ display:"flex",gap:8 }}>
-              <button type="button" onClick={() => setDupWarning([])} style={{ padding:"7px 14px",borderRadius:8,border:"0.5px solid var(--border2)",background:"var(--surface)",fontSize:13,cursor:"pointer",fontFamily:"inherit" }}>Cancelar</button>
-              <button type="button" onClick={() => doSubmit()} disabled={loading} style={{ padding:"7px 14px",borderRadius:8,border:"none",background:"var(--amber)",color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit" }}>{loading?"Enviando...":"Sí, enviar"}</button>
-            </div>
-          </div>
-        )}
-
-        {/* 1. Datos personales */}
-        <div style={sec}>
-          {secH(1,"Tus datos")}
-          <div style={{ padding:"16px" }}>
-            <div style={{ marginBottom:14,position:"relative" }}>
-              <label style={lbl}>Nombre completo *</label>
-              <input style={inp} value={form.nombre} autoFocus
-                     onChange={e => handleNombreChange(e.target.value)}
-                     placeholder="Escribe tu nombre para buscarte..."/>
-              {searching && <div style={{ fontSize:11,color:"var(--text3)",marginTop:4 }}>Buscando...</div>}
-              {searchResults.length > 0 && (
-                <div style={{ position:"absolute",left:0,right:0,top:"100%",marginTop:4,background:"var(--surface)",border:"0.5px solid var(--border2)",borderRadius:10,boxShadow:"0 4px 20px rgba(0,0,0,0.12)",zIndex:20,overflow:"hidden" }}>
-                  {searchResults.map(r => (
-                    <button key={r.id} type="button" onClick={() => selectResident(r)}
-                            style={{ display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%",padding:"11px 14px",fontSize:13,borderBottom:"0.5px solid var(--border)",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",gap:8 }}
-                            onMouseOver={e => e.currentTarget.style.background = "var(--blue-bg)"}
-                            onMouseOut={e => e.currentTarget.style.background = "none"}>
-                      <span style={{ fontWeight:500,color:"var(--text)" }}>{r.residente.split("/")[0].trim()}</span>
-                      <span style={{ fontSize:11,color:"var(--text3)",flexShrink:0 }}>{r.calle} · L{r.lote}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div>
-              <label style={lbl}>Número de WhatsApp *</label>
-              <input style={inp} type="tel" value={form.telefono} onChange={e => setF("telefono",e.target.value)} placeholder="55 1234 5678"/>
-              <div style={{ fontSize:11,color:"var(--text3)",marginTop:5 }}>Recibirás la confirmación aquí</div>
-            </div>
-          </div>
+      <div style={{width:"100%",maxWidth:500}}>
+        <div style={{background:"var(--surface)",border:"0.5px solid var(--border)",borderRadius:16,padding:"20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
+          {pasoActual===1&&(
+            <Paso1 form={form} setF={(k,v)=>{if(k==="nombre")handleNombreChange(v);else setF(k,v);}}
+                   searchResults={searchResults} searching={searching}
+                   onSelectResident={onSelectResident} onNext={handleNext} error={error}/>
+          )}
+          {pasoActual===2&&(
+            <Paso2 propiedades={propiedades} setPropiedades={setPropiedades}
+                   residenteOpciones={residenteOpciones} form={form}
+                   onNext={handleNext} onBack={()=>{setError("");setPasoActual(1);}} error={error}/>
+          )}
+          {pasoActual===3&&(
+            <Paso3 form={form} propiedades={propsValidas} monto={monto} notas={notas}
+                   setMonto={setMonto} setNotas={setNotas}
+                   onSubmit={handleSubmit} onBack={()=>{setError("");setPasoActual(2);}}
+                   loading={loading} error={error}/>
+          )}
         </div>
-
-        {/* 2. Propiedades */}
-        <div style={sec}>
-          {secH(2, propiedades.length === 1 ? "Tu domicilio" : `Tus propiedades (${propiedades.length})`)}
-          <div style={{ padding:"16px" }}>
-            <div style={{ fontSize:12,color:"var(--text3)",marginBottom:12,lineHeight:1.5 }}>
-              ¿Tienes más de una casa? Agrégalas para pagar todas a la vez.
-            </div>
-            {propiedades.map(prop => (
-              <PropiedadRow key={prop.id} prop={prop}
-                onChange={(k,v) => updateProp(prop.id,k,v)}
-                onRemove={() => removeProp(prop.id)}
-                onAutofill={(c,l,m) => autofillProp(prop.id,c,l,m)}
-                canRemove={propiedades.length > 1}
-                pendientersPorProp={pendientersPorProp}
-              />
-            ))}
-            <button type="button" onClick={addProp}
-                    style={{ width:"100%",padding:"10px",borderRadius:10,border:"1.5px dashed var(--border2)",background:"transparent",color:"var(--blue)",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6 }}
-                    onMouseOver={e => { e.currentTarget.style.borderColor="var(--blue)"; e.currentTarget.style.background="var(--blue-bg)"; }}
-                    onMouseOut={e => { e.currentTarget.style.borderColor="var(--border2)"; e.currentTarget.style.background="transparent"; }}>
-              <PlusIcon/> Agregar otra propiedad
-            </button>
-          </div>
-        </div>
-
-        {/* 3. Pago */}
-        <div style={sec}>
-          {secH(3,"Detalle del pago")}
-          <div style={{ padding:"16px" }}>
-
-            {/* Meses */}
-            <div style={{ marginBottom:14 }}>
-              <label style={lbl}>Meses que estás pagando *</label>
-              <button type="button" onClick={() => setShowModal(true)}
-                      style={{ width:"100%",padding:"11px 14px",borderRadius:10,border:`1.5px solid ${mesesSel.length?"var(--blue)":"var(--border2)"}`,background:mesesSel.length?"var(--blue-bg)":"var(--surface)",color:mesesSel.length?"var(--blue-text)":"var(--text3)",fontSize:14,fontWeight:mesesSel.length?600:400,cursor:"pointer",fontFamily:"inherit",textAlign:"left",display:"flex",justifyContent:"space-between",alignItems:"center" }}>
-                <span>{mesesSel.length===0?"Seleccionar meses...":mesesSel.length===1?mesesSel[0].label:`${mesesSel.length} meses seleccionados`}</span>
-                <span style={{ fontSize:16,opacity:0.5 }}>▾</span>
-              </button>
-              {mesesSel.length > 0 && (
-                <div style={{ marginTop:8,display:"flex",flexWrap:"wrap",gap:5 }}>
-                  {mesesSel.sort((a,b) => a.anio-b.anio||a.mes-b.mes).map(m => (
-                    <span key={m.key} style={{ fontSize:12,background:"var(--blue-bg)",color:"var(--blue-text)",padding:"3px 10px",borderRadius:6,display:"inline-flex",alignItems:"center",gap:5,fontWeight:500 }}>
-                      {m.label}
-                      <button type="button" onClick={() => toggleMes(m)} style={{ background:"none",border:"none",cursor:"pointer",color:"var(--blue)",fontSize:13,lineHeight:1,padding:0 }}>✕</button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Monto */}
-            <div style={{ marginBottom:14 }}>
-              <label style={lbl}>Monto pagado por mes (MXN) *</label>
-              <div style={{ position:"relative" }}>
-                <span style={{ position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--text3)",fontSize:15,fontWeight:500 }}>$</span>
-                <input style={{ ...inp,paddingLeft:26 }} type="number" min="1" step="1" value={form.monto} onChange={e => setF("monto",e.target.value)} placeholder="350"/>
-              </div>
-              {totalEnvios > 1 && form.monto && (
-                <div style={{ marginTop:8,padding:"10px 12px",background:"var(--blue-bg)",borderRadius:9,fontSize:12,color:"var(--blue-text)" }}>
-                  <div style={{ fontWeight:600,marginBottom:4 }}>Resumen:</div>
-                  {propsValidas.map(p => (
-                    <div key={p.id} style={{ display:"flex",justifyContent:"space-between",padding:"1px 0" }}>
-                      <span>{p.calle} L{p.lote} · {mesesSel.length} mes{mesesSel.length>1?"es":""}</span>
-                      <span style={{ fontWeight:600 }}>${(Number(form.monto)*mesesSel.length).toLocaleString()}</span>
-                    </div>
-                  ))}
-                  <div style={{ borderTop:"0.5px solid rgba(24,95,165,0.2)",marginTop:6,paddingTop:6,display:"flex",justifyContent:"space-between",fontWeight:700 }}>
-                    <span>Total</span><span>${totalMonto.toLocaleString()} MXN</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Comprobante */}
-            <div>
-              <label style={lbl}>Comprobante de pago</label>
-              {!imagePreview ? (
-                <div onClick={() => fileInputRef.current?.click()}
-                     style={{ border:"1.5px dashed var(--border2)",borderRadius:10,padding:"20px",textAlign:"center",cursor:"pointer",background:"var(--surface2)" }}
-                     onMouseOver={e => { e.currentTarget.style.borderColor="var(--blue)"; e.currentTarget.style.background="var(--blue-bg)"; }}
-                     onMouseOut={e => { e.currentTarget.style.borderColor="var(--border2)"; e.currentTarget.style.background="var(--surface2)"; }}
-                     onDrop={e => { e.preventDefault(); handleImage(e.dataTransfer.files[0]); }}
-                     onDragOver={e => e.preventDefault()}>
-                  <div style={{ fontSize:28,marginBottom:6 }}>📷</div>
-                  <div style={{ fontSize:13,color:"var(--text2)",fontWeight:500,marginBottom:3 }}>Toca para adjuntar tu comprobante</div>
-                  <div style={{ fontSize:11,color:"var(--text3)" }}>JPG, PNG o PDF · Máx 5 MB</div>
-                  <input ref={fileInputRef} type="file" accept="image/*,application/pdf" style={{ display:"none" }} onChange={e => handleImage(e.target.files[0])}/>
-                </div>
-              ) : (
-                <div style={{ position:"relative",borderRadius:10,overflow:"hidden",border:"0.5px solid var(--border2)" }}>
-                  <img src={imagePreview} alt="Comprobante" style={{ width:"100%",maxHeight:180,objectFit:"cover",display:"block" }}/>
-                  <div style={{ position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,0.55),transparent)",display:"flex",alignItems:"flex-end",justifyContent:"space-between",padding:"10px 12px" }}>
-                    <span style={{ fontSize:12,color:"#fff",fontWeight:500 }}>✓ Comprobante adjunto</span>
-                    <button type="button" onClick={() => { setImagePreview(null); setImageBase64(null); }}
-                            style={{ padding:"4px 10px",borderRadius:6,background:"rgba(255,255,255,0.2)",color:"#fff",border:"1px solid rgba(255,255,255,0.4)",fontSize:11,cursor:"pointer",fontFamily:"inherit" }}>
-                      Cambiar
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* 4. Notas */}
-        <div style={sec}>
-          <div style={{ padding:"14px 16px" }}>
-            <label style={{ ...lbl,marginBottom:8 }}>Notas adicionales (opcional)</label>
-            <textarea style={{ ...inp,resize:"none",height:68 }} value={form.notas} onChange={e => setF("notas",e.target.value)}
-                      placeholder="Ej: Pago en efectivo, referencia del banco..."/>
-          </div>
-        </div>
-
-        <button type="submit" disabled={loading}
-                style={{ width:"100%",padding:"14px",borderRadius:12,border:"none",background:loading?"var(--surface2)":"var(--blue)",color:loading?"var(--text3)":"#fff",fontSize:15,fontWeight:700,cursor:loading?"not-allowed":"pointer",fontFamily:"inherit",boxShadow:loading?"none":"0 4px 16px rgba(24,95,165,0.28)",marginBottom:14 }}>
-          {loading ? "Enviando..." : mesesSel.length===0||propsValidas.length===0 ? "Completa los campos para continuar" : totalEnvios===1 ? "Enviar comprobante de pago" : `Enviar pago · ${totalEnvios} registro${totalEnvios>1?"s":""} · $${totalMonto.toLocaleString()} MXN`}
-        </button>
-
-        <div style={{ textAlign:"center",fontSize:11,color:"var(--text3)",lineHeight:1.6 }}>
-          Al enviar confirmas que la información es correcta.<br/>
-          Recibirás confirmación por WhatsApp al aprobar tu pago.
-        </div>
-      </form>
-
-      {showModal && (
-        <MesesModal opciones={opciones} mesesSel={mesesSel} pendientes={allPendientes}
-                    onToggle={toggleMes} onClose={() => setShowModal(false)}/>
-      )}
+      </div>
     </div>
   );
 }

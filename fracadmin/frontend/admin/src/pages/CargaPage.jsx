@@ -55,16 +55,19 @@ function parseWhatsformCSV(text) {
   MESES_FULL.forEach((m,i) => { mesesMap[m.toLowerCase()] = i+1; });
 
   for (const row of data) {
-    // Intentar mapear columnas — WhatsForm usa los títulos de las preguntas
-    const nombre   = row["Nombre completo"] || row["nombre"] || row["Nombre"] || Object.values(row)[1] || "";
-    const telefono = row["Numero de WhatsApp"] || row["Teléfono"] || row["telefono"] || Object.values(row)[2] || "";
-    const calle    = row["Calle"] || row["calle"] || Object.values(row)[3] || "";
-    const lote     = row["Numero de casa"] || row["Lote"] || row["lote"] || Object.values(row)[4] || "";
-    const mza      = row["Manzana"] || row["mza"] || Object.values(row)[5] || "";
-    const mesRaw   = row["Mes"] || row["Meses"] || row["mes"] || Object.values(row)[6] || "";
-    const monto    = row["Monto"] || row["monto"] || Object.values(row)[7] || "";
-    const notas    = row["Notas"] || row["notas"] || Object.values(row)[8] || "";
-    const timestamp= row["Marca temporal"] || row["Timestamp"] || Object.values(row)[0] || "";
+    // Columnas exactas de WhatsForm según CSV real exportado
+    const nombre   = row["Escriba su nombre empezando por Apellidos "]
+                  || row["Nombre completo"] || row["Nombre"] || Object.values(row)[2] || "";
+    const telefono = row["Número de Whatsapp o Número telefónico ☎️"]
+                  || row["Numero de WhatsApp"] || row["Teléfono"] || Object.values(row)[3] || "";
+    const calle    = row["¿De qué calle eres? 🛣"] || row["Calle"] || Object.values(row)[4] || "";
+    const lote     = row["Número de casa 🏠"] || row["Numero de casa"] || Object.values(row)[5] || "";
+    const mza      = row["Manzana"] || row["mza"] || Object.values(row)[6] || "";
+    const monto    = row["¿Cuánto va a pagar? "] || row["Monto"] || Object.values(row)[7] || "";
+    const comprobante = row["Agregue su comprobante aquí"] || row["Comprobante"] || "";
+    const mesRaw   = row["¿Qué mes pago?"] || row["Mes"] || Object.values(row)[9] || "";
+    const notas    = "";
+    const timestamp= row["Time"] || row["Marca temporal"] || Object.values(row)[1] || "";
 
     if (!nombre.trim() || !monto) continue;
 
@@ -93,16 +96,17 @@ function parseWhatsformCSV(text) {
     if (isNaN(montoNum) || montoNum <= 0) continue;
 
     registros.push({
-      timestamp: timestamp || new Date().toISOString(),
-      nombre:    nombre.trim(),
-      telefono:  telefono.trim(),
-      calle:     calle.trim().toUpperCase(),
-      lote:      lote.trim(),
-      mza:       mza.trim(),
+      timestamp:   timestamp || new Date().toISOString(),
+      nombre:      nombre.trim(),
+      telefono:    telefono.trim(),
+      calle:       calle.trim().toUpperCase(),
+      lote:        lote.trim(),
+      mza:         mza.trim(),
       mes,
       anio,
-      monto:     montoNum,
-      notas:     notas.trim() || null,
+      monto:       montoNum,
+      notas:       notas.trim() || null,
+      comprobante: comprobante.trim() || null,
     });
   }
   return registros;
@@ -187,15 +191,16 @@ export default function CargaPage() {
       for (const r of preview.registros) {
         try {
           await api.post("/api/payments/submit", {
-            nombre:    r.nombre,
-            telefono:  r.telefono,
-            calle:     r.calle,
-            lote:      r.lote,
-            mza:       r.mza,
-            mes:       r.mes,
-            anio:      r.anio,
-            monto:     r.monto,
-            notas:     r.notas ? `[WhatsForm] ${r.notas}` : "[WhatsForm CSV]",
+            nombre:          r.nombre,
+            telefono:        r.telefono,
+            calle:           r.calle,
+            lote:            r.lote,
+            mza:             r.mza,
+            mes:             r.mes,
+            anio:            r.anio,
+            monto:           r.monto,
+            comprobante_url: r.comprobante || null,
+            notas:           "[WhatsForm CSV]",
           });
           ok++;
         } catch { fail++; }

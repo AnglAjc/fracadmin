@@ -9,7 +9,8 @@
     "db:migrate": "node db/migrate.js",
     "db:seed": "node db/seed.js",
     "db:migrate2": "node db/migrate_v2.js",
-    "db:migrate3": "node db/migrate_v3.js"
+    "db:migrate3": "node db/migrate_v3.js",
+    "db:migrate4": "node db/migrate_v4.js"
   },
   "dependencies": {
     "express": "^4.18.2",

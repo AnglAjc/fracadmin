@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useEffect } from "react";
 import api from "../lib/api";
 import { calcDeuda, fmtMXN, CALLES, MESES } from "../lib/helpers";
 
@@ -25,17 +25,61 @@ function RowMenu({ onEdit, onDelete, onHistory }) {
   );
 }
 
-function PayGrid({ r }) {
-  const p25=r.pagos25||{}, p26=r.pagos26||{};
+function PayGrid({ r, onRefresh }) {
+  const [data, setData] = useState(r);
+  const [toggling, setToggling] = useState(null);
   const now=new Date(); const maxM26=now.getFullYear()>=2026?now.getMonth():0;
+
+  useEffect(() => { setData(r); }, [r]);
+
+  const p25=data.pagos25||{}, p26=data.pagos26||{};
+
   const cls=(v,y,m)=>{ if(y===2026&&m>=maxM26)return"empty"; if(v==="pendiente")return"pending"; if(typeof v==="number"&&v>0)return"paid"; return"empty"; };
   const txt=(v,y,m)=>{ if(y===2026&&m>=maxM26)return"—"; if(v==="pendiente")return"✗"; if(typeof v==="number"&&v>0)return"✓"; return"—"; };
+
+  const handleClick = async (anio, mes) => {
+    const key = `${anio}-${mes}`;
+    const p = anio===2025?p25:p26;
+    const val = p[mes];
+    if ((anio===2026&&mes>=maxM26)) return; // futuro, no editable
+    const accion = (val==="pendiente") ? "pagar" : "deshacer";
+    setToggling(key);
+    try {
+      const { data: updated } = await api.patch(`/api/residents/${data.id}/toggle-pago`, { anio, mes, accion });
+      setData(updated);
+      if(onRefresh) onRefresh(updated);
+    } catch(e){ console.error(e); }
+    finally { setToggling(null); }
+  };
+
+  const Cell = ({ val, anio, mes }) => {
+    const key = `${anio}-${mes}`;
+    const isFuture = anio===2026&&mes>=maxM26;
+    const isLoading = toggling===key;
+    const c = cls(val,anio,mes);
+    return (
+      <td className={c}
+          style={{ cursor:isFuture?"default":"pointer", opacity:isLoading?0.5:1, transition:"opacity 0.1s", position:"relative" }}
+          title={isFuture?"":"Clic para marcar/desmarcar pago"}
+          onClick={()=>!isFuture&&handleClick(anio,mes)}>
+        {isLoading ? "…" : txt(val,anio,mes)}
+      </td>
+    );
+  };
+
   return (
     <div className="pay-grid scroll-x" style={{ marginTop:12 }}>
-      <div className="pay-year">2025</div>
-      <table><thead><tr>{MESES.map(m=><th key={m}>{m}</th>)}</tr></thead><tbody><tr>{MESES.map((_,i)=><td key={i} className={cls(p25[i],2025,i)}>{txt(p25[i],2025,i)}</td>)}</tr></tbody></table>
-      <div className="pay-year">2026</div>
-      <table><thead><tr>{MESES.map(m=><th key={m}>{m}</th>)}</tr></thead><tbody><tr>{MESES.map((_,i)=><td key={i} className={cls(p26[i],2026,i)}>{txt(p26[i],2026,i)}</td>)}</tr></tbody></table>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div className="pay-year">2025</div>
+        <div style={{fontSize:10,color:"var(--text3)"}}>Clic en una celda para marcar/desmarcar pago</div>
+      </div>
+      <table><thead><tr>{MESES.map(m=><th key={m}>{m}</th>)}</tr></thead>
+        <tbody><tr>{MESES.map((_,i)=><Cell key={i} val={p25[i]} anio={2025} mes={i}/>)}</tr></tbody>
+      </table>
+      <div className="pay-year" style={{marginTop:8}}>2026</div>
+      <table><thead><tr>{MESES.map(m=><th key={m}>{m}</th>)}</tr></thead>
+        <tbody><tr>{MESES.map((_,i)=><Cell key={i} val={p26[i]} anio={2026} mes={i}/>)}</tr></tbody>
+      </table>
     </div>
   );
 }
@@ -187,7 +231,7 @@ function HistorialModal({ residentId, onClose }) {
 // ── Modal crear/editar ─────────────────────────────────────────
 function ResidentModal({ resident, onClose, onSaved }) {
   const isEdit=!!resident?.id;
-  const [form,setForm]=useState({ calle:resident?.calle||"",lote:resident?.lote||"",mza:resident?.mza||"",residente:resident?.residente||"",telefono:resident?.telefono||"",deuda_extra:resident?.deuda_extra!=null?String(resident.deuda_extra):"0" });
+  const [form,setForm]=useState({ calle:resident?.calle||"",lote:resident?.lote||"",mza:resident?.mza||"",residente:resident?.residente||"",telefono:resident?.telefono||"",deuda_extra:resident?.deuda_extra!=null?String(resident.deuda_extra):"0",pausado:resident?.pausado||false });
   const [loading,setLoading]=useState(false); const [error,setError]=useState("");
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const IS={ width:"100%",padding:"8px 10px",borderRadius:6,border:"0.5px solid var(--border2)",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box" };
@@ -213,7 +257,17 @@ function ResidentModal({ resident, onClose, onSaved }) {
           <div><label style={LS}>Teléfono</label><input style={IS} value={form.telefono} onChange={e=>set("telefono",e.target.value)} placeholder="55 1234 5678"/></div>
         </div>
         <div style={{marginBottom:12}}><label style={LS}>Nombre del residente *</label><input style={IS} value={form.residente} onChange={e=>set("residente",e.target.value)} placeholder="Nombre completo"/></div>
-        <div style={{marginBottom:16}}><label style={LS}>Deuda extra (MXN)</label><input style={IS} type="number" min="0" value={form.deuda_extra} onChange={e=>set("deuda_extra",e.target.value)}/></div>
+        <div style={{marginBottom:12}}><label style={LS}>Deuda extra (MXN)</label><input style={IS} type="number" min="0" value={form.deuda_extra} onChange={e=>set("deuda_extra",e.target.value)}/></div>
+        <div style={{marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:"var(--surface2)",borderRadius:8}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:500}}>⏸ Pausar propiedad</div>
+            <div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>Detiene el conteo de deuda (propiedad desocupada)</div>
+          </div>
+          <button type="button" onClick={()=>set("pausado",!form.pausado)}
+                  style={{width:46,height:26,borderRadius:13,border:"none",cursor:"pointer",position:"relative",background:form.pausado?"var(--amber)":"var(--surface)",border:"1px solid var(--border2)",transition:"background 0.2s",flexShrink:0}}>
+            <div style={{position:"absolute",top:2,left:form.pausado?22:2,width:20,height:20,borderRadius:"50%",background:form.pausado?"#fff":"var(--text3)",transition:"left 0.2s"}}/>
+          </button>
+        </div>
         <div style={{display:"flex",gap:8}}>
           <button className="btn" style={{flex:1,justifyContent:"center"}} onClick={onClose}>Cancelar</button>
           <button className="btn primary" style={{flex:1,justifyContent:"center"}} onClick={handleSave} disabled={loading}>{loading?"Guardando...":isEdit?"Guardar cambios":"Agregar residente"}</button>
@@ -233,6 +287,7 @@ export default function ResidentesPage() {
   const [selected,setSelected]   = useState(null);
   const [editModal,setEditModal] = useState(null);
   const [deleteTarget,setDelete] = useState(null);
+  const [multiPropFilter,setMultiPropFilter] = useState("");
   const [historialId,setHistorial] = useState(null);
   const [toast,setToast]         = useState(null);
   const [delLoading,setDelLoading] = useState(false);
@@ -249,12 +304,23 @@ export default function ResidentesPage() {
 
   useEffect(()=>{load();},[load]);
 
-  const filtered=residents.filter(r=>{
-    if(!statusFilter) return true;
-    const d=calcDeuda(r);
-    if(statusFilter==="moroso") return d>700;
-    if(statusFilter==="leve")   return d>0&&d<=700;
-    if(statusFilter==="corriente") return d===0;
+  // Detectar residentes con múltiples propiedades (mismo nombre)
+  const nombreCount = {};
+  residents.forEach(r => {
+    const n = r.residente.split("/")[0].trim().toLowerCase();
+    nombreCount[n] = (nombreCount[n]||0)+1;
+  });
+
+  const filtered = residents.filter(r=>{
+    const d = calcDeuda(r);
+    if(statusFilter==="moroso")    { if(r.pausado||d<=700) return false; }
+    else if(statusFilter==="leve") { if(r.pausado||d<=0||d>700) return false; }
+    else if(statusFilter==="corriente") { if(r.pausado||d>0) return false; }
+    else if(statusFilter==="pausado")   { if(!r.pausado) return false; }
+    if(multiPropFilter==="multi") {
+      const n = r.residente.split("/")[0].trim().toLowerCase();
+      if((nombreCount[n]||0)<2) return false;
+    }
     return true;
   });
 
@@ -296,7 +362,7 @@ export default function ResidentesPage() {
               <button className="btn-close" onClick={()=>setSelected(null)}>✕</button>
             </div>
           </div>
-          <PayGrid r={selected}/>
+          <PayGrid r={selected} onRefresh={(updated)=>{ setSelected(updated); setResidents(prev=>prev.map(r=>r.id===updated.id?updated:r)); }}/>
           {calcDeuda(selected)>0&&(
             <div className="detail-actions">
               <button className="btn green" onClick={()=>copyWA(selected)}>
@@ -320,6 +386,11 @@ export default function ResidentesPage() {
           <option value="moroso">Morosos</option>
           <option value="leve">Deuda leve</option>
           <option value="corriente">Al corriente</option>
+          <option value="pausado">Pausados</option>
+        </select>
+        <select value={multiPropFilter} onChange={e=>setMultiPropFilter(e.target.value)}>
+          <option value="">Todas las propiedades</option>
+          <option value="multi">Con múltiples propiedades</option>
         </select>
       </div>
 
@@ -337,7 +408,7 @@ export default function ResidentesPage() {
                   <td style={{color:"var(--text2)"}}>{r.calle}</td>
                   <td style={{color:"var(--text3)"}}>L{r.lote} · Mza {r.mza}</td>
                   <td style={{color:"var(--text3)",fontSize:12}}>{r.telefono||"—"}</td>
-                  <td><span className={badgeCls(st)}>{badgeLbl(st)}</span></td>
+                  <td>{r.pausado?<span className="badge" style={{background:"var(--surface2)",color:"var(--text3)"}}>⏸ Pausado</span>:<span className={badgeCls(st)}>{badgeLbl(st)}</span>}</td>
                   <td style={{textAlign:"right",fontWeight:600,color:d>0?"var(--red)":"var(--green)"}}>{d>0?fmtMXN(d):"—"}</td>
                   <td>
                     <RowMenu

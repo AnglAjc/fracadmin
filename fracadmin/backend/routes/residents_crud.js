@@ -32,7 +32,7 @@ router.post("/", requireAuth, async (req, res) => {
 
 // PATCH /api/residents/:id — editar residente
 router.patch("/:id", requireAuth, async (req, res) => {
-  const { calle, lote, mza, residente, deuda_extra, telefono, pagos25, pagos26 } = req.body;
+  const { calle, lote, mza, residente, deuda_extra, telefono, pagos25, pagos26, pausado } = req.body;
   try {
     const fields = [];
     const vals   = [];
@@ -46,6 +46,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
     if (telefono  != null) push("telefono",    telefono);
     if (pagos25   != null) push("pagos25",     JSON.stringify(pagos25));
     if (pagos26   != null) push("pagos26",     JSON.stringify(pagos26));
+    if (pausado   != null) push("pausado",     pausado);
 
     if (fields.length === 0) return res.status(400).json({ error: "Nada que actualizar" });
     push("updated_at", new Date());
@@ -78,3 +79,24 @@ router.delete("/:id", requireAuth, async (req, res) => {
 });
 
 module.exports = router;
+
+// PATCH /api/residents/:id/toggle-pago — marcar/desmarcar un mes como pagado
+router.patch("/:id/toggle-pago", requireAuth, async (req, res) => {
+  const { anio, mes, accion } = req.body;
+  // accion: 'pagar' | 'deshacer'
+  if (!anio || mes === undefined) return res.status(400).json({ error: "anio y mes requeridos" });
+  const campo  = String(anio) === "2025" ? "pagos25" : "pagos26";
+  const mesIdx = Number(mes);
+  const valor  = accion === "pagar" ? 400 : "pendiente";
+  try {
+    const { rows } = await pool.query(
+      `UPDATE residents SET ${campo}=jsonb_set(${campo},$1,$2::jsonb,true), updated_at=NOW() WHERE id=$3 RETURNING *`,
+      [`{${mesIdx}}`, JSON.stringify(valor), req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "No encontrado" });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error("[toggle-pago]", err.message);
+    res.status(500).json({ error: "Error al actualizar pago" });
+  }
+});
