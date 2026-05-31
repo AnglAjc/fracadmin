@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useEffect } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import api from "../lib/api";
 import { calcDeuda, fmtMXN, CALLES, MESES } from "../lib/helpers";
 
