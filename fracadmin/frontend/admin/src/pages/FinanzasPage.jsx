@@ -405,7 +405,8 @@ export default function FinanzasPage() {
   const [cuentaModal,setCuentaModal]= useState(null);
   const [catModal,setCatModal]     = useState(null);
   const [confirmModal,setConfirm]  = useState(null);
-  const [pdfLoading,setPdfLoading] = useState(false);
+  const [pdfLoading,setPdfLoading]   = useState(false);
+  const [xlsxLoading,setXlsxLoading] = useState(false);
   const [toast,setToast]           = useState(null);
 
   const showToast=(msg,ok=true)=>{setToast({msg,ok});setTimeout(()=>setToast(null),3000);};
@@ -447,6 +448,74 @@ export default function FinanzasPage() {
     finally { setPdfLoading(false); }
   };
 
+  const handleExcel = async () => {
+    setXlsxLoading(true);
+    try {
+      const XLSX = await import("xlsx");
+      const wb   = XLSX.utils.book_new();
+      const fecha = new Date().toLocaleDateString("es-MX",{year:"numeric",month:"long",day:"numeric"});
+
+      const movRows = movimientos.map(m => ({
+        "Fecha":     fmtFecha(m.fecha),
+        "Tipo":      m.tipo === "ingreso" ? "Ingreso" : "Gasto",
+        "Concepto":  m.concepto,
+        "Categoría": m.categoria_nombre || "",
+        "Cuenta":    m.cuenta_nombre || "",
+        "Monto":     Number(m.monto),
+        "Notas":     m.notas || "",
+      }));
+      const wsMovs = XLSX.utils.json_to_sheet(movRows);
+      wsMovs["!cols"] = [{wch:12},{wch:10},{wch:45},{wch:22},{wch:18},{wch:12},{wch:30}];
+      XLSX.utils.book_append_sheet(wb, wsMovs, "Movimientos");
+
+      const byCat = {};
+      movimientos.forEach(m => {
+        const k = `${m.tipo}|${m.categoria_nombre||"Sin categoría"}`;
+        if (!byCat[k]) byCat[k] = { tipo:m.tipo, categoria:m.categoria_nombre||"Sin categoría", total:0, cantidad:0 };
+        byCat[k].total    += Number(m.monto);
+        byCat[k].cantidad += 1;
+      });
+      const catRows = Object.values(byCat).sort((a,b)=>b.total-a.total).map(c=>({
+        "Tipo":      c.tipo==="ingreso"?"Ingreso":"Gasto",
+        "Categoría": c.categoria,
+        "Cantidad":  c.cantidad,
+        "Total MXN": c.total,
+      }));
+      const wsCats = XLSX.utils.json_to_sheet(catRows);
+      wsCats["!cols"] = [{wch:10},{wch:25},{wch:10},{wch:14}];
+      XLSX.utils.book_append_sheet(wb, wsCats, "Por categoría");
+
+      const cuentaRows = cuentas.map(c=>({
+        "Cuenta":        c.nombre,
+        "Tipo":          c.tipo,
+        "Saldo inicial": Number(c.saldo_inicial||0),
+        "Saldo actual":  Number(c.saldo_actual||0),
+      }));
+      cuentaRows.push({ "Cuenta":"TOTAL DISPONIBLE","Tipo":"",
+        "Saldo inicial": cuentas.reduce((s,c)=>s+Number(c.saldo_inicial||0),0),
+        "Saldo actual":  cuentas.reduce((s,c)=>s+Number(c.saldo_actual||0),0) });
+      const wsCuentas = XLSX.utils.json_to_sheet(cuentaRows);
+      wsCuentas["!cols"] = [{wch:22},{wch:15},{wch:16},{wch:16}];
+      XLSX.utils.book_append_sheet(wb, wsCuentas, "Cuentas");
+
+      const ti=Number(resumen?.total_ingresos||0), tg=Number(resumen?.total_gastos||0);
+      const wsRes = XLSX.utils.json_to_sheet([
+        {"Concepto":"Total ingresos","Monto MXN":ti},
+        {"Concepto":"Total gastos",  "Monto MXN":tg},
+        {"Concepto":"Balance",       "Monto MXN":ti-tg},
+        {"Concepto":"","Monto MXN":""},
+        {"Concepto":`Generado el ${fecha}`,"Monto MXN":""},
+      ]);
+      wsRes["!cols"] = [{wch:25},{wch:16}];
+      XLSX.utils.book_append_sheet(wb, wsRes, "Resumen");
+
+      XLSX.writeFile(wb, `finanzas_${new Date().toISOString().slice(0,10)}.xlsx`);
+      showToast("✓ Excel descargado");
+    } catch(e){ console.error(e); showToast("Error al generar Excel",false); }
+    finally { setXlsxLoading(false); }
+  };
+
+
   return (
     <div style={{padding:"2rem",flex:1}}>
       {toast&&<div className={`toast ${toast.ok?"":"error"}`} style={{position:"fixed",top:16,right:16,zIndex:100,padding:"12px 20px",borderRadius:"var(--radius)",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",minWidth:260}}>{toast.msg}</div>}
@@ -457,6 +526,10 @@ export default function FinanzasPage() {
           <div className="page-sub">Gestión de gastos, ingresos y cuentas</div>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button className="btn" onClick={handleExcel} disabled={xlsxLoading} style={{gap:6}}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12l2.5 3L14 9"/></svg>
+            {xlsxLoading?"Exportando...":"Exportar Excel"}
+          </button>
           <button className="btn" onClick={handlePDF} disabled={pdfLoading} style={{gap:6}}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             {pdfLoading?"Generando...":"Rendición de cuentas PDF"}

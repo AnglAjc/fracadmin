@@ -125,3 +125,32 @@ router.patch("/:id/telefono", async (req, res) => {
 });
 
 module.exports = router;
+
+// GET /api/residents/:id/historial — historial de pagos de un residente
+router.get("/:id/historial", requireAuth, async (req, res) => {
+  try {
+    const { rows: resident } = await pool.query(
+      "SELECT * FROM residents WHERE id = $1", [req.params.id]
+    );
+    if (!resident[0]) return res.status(404).json({ error: "No encontrado" });
+
+    const { rows: pagos } = await pool.query(`
+      SELECT
+        ps.id, ps.mes, ps.anio, ps.monto, ps.status,
+        ps.created_at, ps.reviewed_at, ps.rejection_reason,
+        ps.whatsapp_sent, ps.comprobante_url,
+        TO_CHAR(ps.created_at, 'DD/MM/YYYY HH24:MI') AS fecha_envio,
+        TO_CHAR(ps.reviewed_at, 'DD/MM/YYYY HH24:MI') AS fecha_revision,
+        a.email AS revisado_por
+      FROM payment_submissions ps
+      LEFT JOIN admins a ON a.id = ps.reviewed_by
+      WHERE ps.resident_id = $1
+      ORDER BY ps.anio DESC, ps.mes DESC, ps.created_at DESC
+    `, [req.params.id]);
+
+    res.json({ resident: resident[0], pagos });
+  } catch (err) {
+    console.error("[residents/historial]", err.message);
+    res.status(500).json({ error: "Error al obtener historial" });
+  }
+});

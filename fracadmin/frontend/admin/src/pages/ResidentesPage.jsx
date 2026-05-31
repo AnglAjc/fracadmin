@@ -2,37 +2,29 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import api from "../lib/api";
 import { calcDeuda, fmtMXN, CALLES, MESES } from "../lib/helpers";
 
-const statusOf  = d => d<=0?"corriente":d<=700?"leve":"moroso";
-const badgeCls  = st => st==="corriente"?"badge green":st==="leve"?"badge amber":"badge red";
-const badgeLbl  = st => st==="corriente"?"Al corriente":st==="leve"?"Deuda leve":"Moroso";
+const MESES_FULL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const statusOf   = d => d<=0?"corriente":d<=700?"leve":"moroso";
+const badgeCls   = st => st==="corriente"?"badge green":st==="leve"?"badge amber":"badge red";
+const badgeLbl   = st => st==="corriente"?"Al corriente":st==="leve"?"Deuda leve":"Moroso";
 
-// ── Menú ⋯ contextual ─────────────────────────────────────────
-function RowMenu({ onEdit, onDelete }) {
-  const [open, setOpen] = useState(false);
+function RowMenu({ onEdit, onDelete, onHistory }) {
+  const [open,setOpen] = useState(false);
   const ref = useRef();
-  useEffect(()=>{
-    const h = e => { if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", h);
-    return ()=>document.removeEventListener("mousedown", h);
-  },[]);
+  useEffect(()=>{ const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);}; document.addEventListener("mousedown",h); return()=>document.removeEventListener("mousedown",h); },[]);
   return (
-    <div ref={ref} style={{ position:"relative", display:"inline-block" }} onClick={e=>e.stopPropagation()}>
-      <button className="btn" style={{ padding:"3px 10px", fontSize:12 }} onClick={()=>setOpen(o=>!o)}>⋯</button>
-      {open && (
-        <div style={{ position:"absolute", right:0, top:"100%", marginTop:4, background:"var(--surface)", border:"0.5px solid var(--border2)", borderRadius:"var(--radius)", boxShadow:"0 4px 16px rgba(0,0,0,0.12)", zIndex:20, minWidth:130, overflow:"hidden" }}>
-          <button onClick={()=>{setOpen(false);onEdit();}} style={{ display:"block",width:"100%",textAlign:"left",padding:"9px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",color:"var(--text)" }}
-                  onMouseOver={e=>e.currentTarget.style.background="var(--surface2)"}
-                  onMouseOut={e=>e.currentTarget.style.background="none"}>✏️ Editar</button>
-          <button onClick={()=>{setOpen(false);onDelete();}} style={{ display:"block",width:"100%",textAlign:"left",padding:"9px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",color:"var(--red)" }}
-                  onMouseOver={e=>e.currentTarget.style.background="var(--red-bg)"}
-                  onMouseOut={e=>e.currentTarget.style.background="none"}>🗑 Eliminar</button>
+    <div ref={ref} style={{ position:"relative",display:"inline-block" }} onClick={e=>e.stopPropagation()}>
+      <button className="btn" style={{ padding:"3px 10px",fontSize:12 }} onClick={()=>setOpen(o=>!o)}>⋯</button>
+      {open&&(
+        <div style={{ position:"absolute",right:0,top:"100%",marginTop:4,background:"var(--surface)",border:"0.5px solid var(--border2)",borderRadius:"var(--radius)",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:20,minWidth:150,overflow:"hidden" }}>
+          <button onClick={()=>{setOpen(false);onHistory();}} style={{ display:"block",width:"100%",textAlign:"left",padding:"9px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",color:"var(--text)" }} onMouseOver={e=>e.currentTarget.style.background="var(--surface2)"} onMouseOut={e=>e.currentTarget.style.background="none"}>📋 Historial de pagos</button>
+          <button onClick={()=>{setOpen(false);onEdit();}} style={{ display:"block",width:"100%",textAlign:"left",padding:"9px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",color:"var(--text)" }} onMouseOver={e=>e.currentTarget.style.background="var(--surface2)"} onMouseOut={e=>e.currentTarget.style.background="none"}>✏️ Editar</button>
+          <button onClick={()=>{setOpen(false);onDelete();}} style={{ display:"block",width:"100%",textAlign:"left",padding:"9px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",color:"var(--red)" }} onMouseOver={e=>e.currentTarget.style.background="var(--red-bg)"} onMouseOut={e=>e.currentTarget.style.background="none"}>🗑 Eliminar</button>
         </div>
       )}
     </div>
   );
 }
 
-// ── Grilla de pagos ────────────────────────────────────────────
 function PayGrid({ r }) {
   const p25=r.pagos25||{}, p26=r.pagos26||{};
   const now=new Date(); const maxM26=now.getFullYear()>=2026?now.getMonth():0;
@@ -41,51 +33,190 @@ function PayGrid({ r }) {
   return (
     <div className="pay-grid scroll-x" style={{ marginTop:12 }}>
       <div className="pay-year">2025</div>
-      <table><thead><tr>{MESES.map(m=><th key={m}>{m}</th>)}</tr></thead>
-        <tbody><tr>{MESES.map((_,i)=><td key={i} className={cls(p25[i],2025,i)}>{txt(p25[i],2025,i)}</td>)}</tr></tbody>
-      </table>
+      <table><thead><tr>{MESES.map(m=><th key={m}>{m}</th>)}</tr></thead><tbody><tr>{MESES.map((_,i)=><td key={i} className={cls(p25[i],2025,i)}>{txt(p25[i],2025,i)}</td>)}</tr></tbody></table>
       <div className="pay-year">2026</div>
-      <table><thead><tr>{MESES.map(m=><th key={m}>{m}</th>)}</tr></thead>
-        <tbody><tr>{MESES.map((_,i)=><td key={i} className={cls(p26[i],2026,i)}>{txt(p26[i],2026,i)}</td>)}</tr></tbody>
-      </table>
+      <table><thead><tr>{MESES.map(m=><th key={m}>{m}</th>)}</tr></thead><tbody><tr>{MESES.map((_,i)=><td key={i} className={cls(p26[i],2026,i)}>{txt(p26[i],2026,i)}</td>)}</tr></tbody></table>
+    </div>
+  );
+}
+
+// ── Modal Historial de Pagos ───────────────────────────────────
+function HistorialModal({ residentId, onClose }) {
+  const [data, setData]     = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [imgModal, setImgModal] = useState(null);
+
+  useEffect(() => {
+    api.get(`/api/residents/${residentId}/historial`)
+      .then(r => setData(r.data))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [residentId]);
+
+  const verComprobante = async (pagoId) => {
+    try {
+      const { data: d } = await api.get(`/api/payments/${pagoId}/comprobante`);
+      if (d.comprobante) setImgModal(d.comprobante);
+      else alert("Este pago no tiene comprobante adjunto");
+    } catch { alert("Error al cargar comprobante"); }
+  };
+
+  const STATUS_BADGE = {
+    aprobado:  { cls:"badge green", label:"Aprobado" },
+    rechazado: { cls:"badge red",   label:"Rechazado" },
+    pendiente: { cls:"badge amber", label:"Pendiente" },
+  };
+
+  return (
+    <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem" }}>
+      <div style={{ background:"var(--surface)",borderRadius:"var(--radius-lg)",width:"100%",maxWidth:680,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden" }}>
+
+        {/* Header */}
+        <div style={{ padding:"16px 20px",borderBottom:"0.5px solid var(--border)",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0 }}>
+          <div>
+            <div style={{ fontWeight:600,fontSize:15 }}>
+              Historial de pagos — {data?.resident?.residente?.split("/")[0].trim() || "…"}
+            </div>
+            {data?.resident && (
+              <div style={{ fontSize:12,color:"var(--text2)",marginTop:2 }}>
+                {data.resident.calle} · L{data.resident.lote} · Mza {data.resident.mza}
+              </div>
+            )}
+          </div>
+          <button className="btn-close" onClick={onClose}>✕</button>
+        </div>
+
+        {/* Contenido */}
+        <div style={{ overflowY:"auto",flex:1 }}>
+          {loading ? (
+            <div style={{ padding:"3rem",textAlign:"center",color:"var(--text2)" }}>Cargando historial...</div>
+          ) : data?.pagos?.length === 0 ? (
+            <div style={{ padding:"3rem",textAlign:"center",color:"var(--text2)" }}>
+              <div style={{ fontSize:36,marginBottom:12 }}>📭</div>
+              <p>Este residente aún no tiene pagos registrados en el sistema.</p>
+            </div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha envío</th>
+                  <th>Mes pagado</th>
+                  <th style={{ textAlign:"right" }}>Monto</th>
+                  <th>Estado</th>
+                  <th>Revisado</th>
+                  <th>Comprobante</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.pagos.map(p => {
+                  const sb = STATUS_BADGE[p.status] || STATUS_BADGE.pendiente;
+                  const mesNombre = MESES_FULL[Number(p.mes)-1] || p.mes;
+                  return (
+                    <tr key={p.id}>
+                      <td style={{ fontSize:12,color:"var(--text3)",whiteSpace:"nowrap" }}>{p.fecha_envio}</td>
+                      <td style={{ fontWeight:500,fontSize:13 }}>{mesNombre} {p.anio}</td>
+                      <td style={{ textAlign:"right",fontWeight:600,color:"var(--blue)" }}>{fmtMXN(p.monto)}</td>
+                      <td>
+                        <span className={sb.cls}>{sb.label}</span>
+                        {p.rejection_reason && (
+                          <div style={{ fontSize:11,color:"var(--text3)",marginTop:3,maxWidth:160 }} title={p.rejection_reason}>
+                            {p.rejection_reason.slice(0,40)}{p.rejection_reason.length>40?"…":""}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ fontSize:12,color:"var(--text2)" }}>
+                        {p.fecha_revision ? (
+                          <div>
+                            <div>{p.fecha_revision}</div>
+                            <div style={{ fontSize:11,color:"var(--text3)" }}>{p.revisado_por}</div>
+                          </div>
+                        ) : "—"}
+                        {p.whatsapp_sent && <div style={{ fontSize:10,color:"#25D366",marginTop:2 }}>✓ WA enviado</div>}
+                      </td>
+                      <td>
+                        {p.comprobante_url ? (
+                          <button className="btn" style={{ fontSize:11,padding:"3px 8px" }} onClick={() => verComprobante(p.id)}>
+                            🖼 Ver
+                          </button>
+                        ) : <span style={{ color:"var(--text3)",fontSize:12 }}>—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Footer resumen */}
+        {data?.pagos?.length > 0 && (
+          <div style={{ padding:"12px 20px",borderTop:"0.5px solid var(--border)",background:"var(--surface2)",display:"flex",gap:16,flexShrink:0,flexWrap:"wrap" }}>
+            {["aprobado","pendiente","rechazado"].map(st => {
+              const count = data.pagos.filter(p=>p.status===st).length;
+              if (count === 0) return null;
+              const sb = STATUS_BADGE[st];
+              return <span key={st} className={sb.cls} style={{ fontSize:12 }}>{sb.label}: {count}</span>;
+            })}
+            <span style={{ marginLeft:"auto",fontSize:12,fontWeight:600,color:"var(--blue)" }}>
+              Total aprobado: {fmtMXN(data.pagos.filter(p=>p.status==="aprobado").reduce((s,p)=>s+Number(p.monto),0))}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Modal imagen comprobante */}
+      {imgModal && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:60,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem" }} onClick={()=>setImgModal(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"var(--surface)",borderRadius:"var(--radius-lg)",overflow:"hidden",maxWidth:"85vw",maxHeight:"88vh",display:"flex",flexDirection:"column" }}>
+            <div style={{ padding:"10px 16px",borderBottom:"0.5px solid var(--border)",display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+              <span style={{ fontWeight:500,fontSize:13 }}>Comprobante de pago</span>
+              <button className="btn" style={{ padding:"4px 10px",fontSize:12 }} onClick={()=>setImgModal(null)}>Cerrar ✕</button>
+            </div>
+            <div style={{ overflow:"auto",padding:"1rem",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center" }}>
+              {imgModal.startsWith("data:application/pdf")
+                ? <iframe src={imgModal} style={{ width:"70vw",height:"72vh",border:"none" }} title="Comprobante"/>
+                : <img src={imgModal} alt="Comprobante" style={{ maxWidth:"70vw",maxHeight:"72vh",objectFit:"contain",borderRadius:"var(--radius)" }}/>}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Modal crear/editar ─────────────────────────────────────────
 function ResidentModal({ resident, onClose, onSaved }) {
-  const isEdit = !!resident?.id;
-  const [form, setForm] = useState({ calle:resident?.calle||"", lote:resident?.lote||"", mza:resident?.mza||"", residente:resident?.residente||"", telefono:resident?.telefono||"", deuda_extra:resident?.deuda_extra!=null?String(resident.deuda_extra):"0" });
-  const [loading, setLoading]=useState(false); const [error, setError]=useState("");
+  const isEdit=!!resident?.id;
+  const [form,setForm]=useState({ calle:resident?.calle||"",lote:resident?.lote||"",mza:resident?.mza||"",residente:resident?.residente||"",telefono:resident?.telefono||"",deuda_extra:resident?.deuda_extra!=null?String(resident.deuda_extra):"0" });
+  const [loading,setLoading]=useState(false); const [error,setError]=useState("");
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
-  const IS={ width:"100%", padding:"8px 10px", borderRadius:6, border:"0.5px solid var(--border2)", fontSize:13, fontFamily:"inherit", outline:"none", boxSizing:"border-box" };
-  const LS={ display:"block", fontSize:11, fontWeight:500, color:"var(--text2)", marginBottom:5 };
+  const IS={ width:"100%",padding:"8px 10px",borderRadius:6,border:"0.5px solid var(--border2)",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box" };
+  const LS={ display:"block",fontSize:11,fontWeight:500,color:"var(--text2)",marginBottom:5 };
   const handleSave=async()=>{
     if(!form.calle||!form.lote||!form.mza||!form.residente) return setError("Calle, lote, manzana y nombre son requeridos");
     setLoading(true); setError("");
     try {
       if(isEdit) await api.patch(`/api/residents/${resident.id}`,{...form,deuda_extra:Number(form.deuda_extra)||0});
-      else       await api.post("/api/residents",{...form,deuda_extra:Number(form.deuda_extra)||0,pagos25:{},pagos26:{}});
+      else await api.post("/api/residents",{...form,deuda_extra:Number(form.deuda_extra)||0,pagos25:{},pagos26:{}});
       onSaved();
-    } catch(err){ setError(err.response?.data?.error||"Error al guardar"); }
-    finally{ setLoading(false); }
+    } catch(err){ setError(err.response?.data?.error||"Error al guardar"); } finally{setLoading(false);}
   };
   return (
     <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem" }}>
       <div style={{ background:"var(--surface)",borderRadius:"var(--radius-lg)",padding:"1.5rem",width:"100%",maxWidth:480,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",maxHeight:"90vh",overflowY:"auto" }}>
         <div style={{ fontSize:16,fontWeight:600,marginBottom:16 }}>{isEdit?"Editar residente":"Agregar residente"}</div>
-        {error&&<div className="alert error" style={{ marginBottom:12 }}>{error}</div>}
+        {error&&<div className="alert error" style={{marginBottom:12}}>{error}</div>}
         <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12 }}>
-          <div><label style={LS}>Calle *</label><select value={form.calle} onChange={e=>set("calle",e.target.value)} style={{ ...IS,cursor:"pointer" }}><option value="">Selecciona...</option>{CALLES.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+          <div><label style={LS}>Calle *</label><select value={form.calle} onChange={e=>set("calle",e.target.value)} style={{...IS,cursor:"pointer"}}><option value="">Selecciona...</option>{CALLES.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
           <div><label style={LS}>Lote *</label><input style={IS} value={form.lote} onChange={e=>set("lote",e.target.value)} placeholder="Ej: 12"/></div>
           <div><label style={LS}>Manzana *</label><input style={IS} value={form.mza} onChange={e=>set("mza",e.target.value)} placeholder="Ej: 3"/></div>
           <div><label style={LS}>Teléfono</label><input style={IS} value={form.telefono} onChange={e=>set("telefono",e.target.value)} placeholder="55 1234 5678"/></div>
         </div>
-        <div style={{ marginBottom:12 }}><label style={LS}>Nombre del residente *</label><input style={IS} value={form.residente} onChange={e=>set("residente",e.target.value)} placeholder="Nombre completo"/></div>
-        <div style={{ marginBottom:16 }}><label style={LS}>Deuda extra (MXN)</label><input style={IS} type="number" min="0" value={form.deuda_extra} onChange={e=>set("deuda_extra",e.target.value)}/></div>
-        <div style={{ display:"flex",gap:8 }}>
-          <button className="btn" style={{ flex:1,justifyContent:"center" }} onClick={onClose}>Cancelar</button>
-          <button className="btn primary" style={{ flex:1,justifyContent:"center" }} onClick={handleSave} disabled={loading}>{loading?"Guardando...":isEdit?"Guardar cambios":"Agregar residente"}</button>
+        <div style={{marginBottom:12}}><label style={LS}>Nombre del residente *</label><input style={IS} value={form.residente} onChange={e=>set("residente",e.target.value)} placeholder="Nombre completo"/></div>
+        <div style={{marginBottom:16}}><label style={LS}>Deuda extra (MXN)</label><input style={IS} type="number" min="0" value={form.deuda_extra} onChange={e=>set("deuda_extra",e.target.value)}/></div>
+        <div style={{display:"flex",gap:8}}>
+          <button className="btn" style={{flex:1,justifyContent:"center"}} onClick={onClose}>Cancelar</button>
+          <button className="btn primary" style={{flex:1,justifyContent:"center"}} onClick={handleSave} disabled={loading}>{loading?"Guardando...":isEdit?"Guardar cambios":"Agregar residente"}</button>
         </div>
       </div>
     </div>
@@ -94,20 +225,21 @@ function ResidentModal({ resident, onClose, onSaved }) {
 
 // ── Página principal ───────────────────────────────────────────
 export default function ResidentesPage() {
-  const [residents, setResidents] = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [calle, setCalle]         = useState("");
-  const [search, setSearch]       = useState("");
-  const [statusFilter, setStatus] = useState("");
-  const [selected, setSelected]   = useState(null);
-  const [editModal, setEditModal] = useState(null);
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [toast, setToast]         = useState(null);
-  const [delLoading, setDelLoading] = useState(false);
+  const [residents,setResidents] = useState([]);
+  const [loading,setLoading]     = useState(true);
+  const [calle,setCalle]         = useState("");
+  const [search,setSearch]       = useState("");
+  const [statusFilter,setStatus] = useState("");
+  const [selected,setSelected]   = useState(null);
+  const [editModal,setEditModal] = useState(null);
+  const [deleteTarget,setDelete] = useState(null);
+  const [historialId,setHistorial] = useState(null);
+  const [toast,setToast]         = useState(null);
+  const [delLoading,setDelLoading] = useState(false);
 
-  const showToast = (msg,ok=true) => { setToast({msg,ok}); setTimeout(()=>setToast(null),3000); };
+  const showToast=(msg,ok=true)=>{setToast({msg,ok});setTimeout(()=>setToast(null),3000);};
 
-  const load = useCallback(()=>{
+  const load=useCallback(()=>{
     setLoading(true);
     const p=new URLSearchParams();
     if(calle) p.set("calle",calle);
@@ -115,58 +247,56 @@ export default function ResidentesPage() {
     api.get(`/api/residents?${p}`).then(r=>setResidents(r.data)).catch(console.error).finally(()=>setLoading(false));
   },[calle,search]);
 
-  useEffect(()=>{ load(); },[load]);
+  useEffect(()=>{load();},[load]);
 
-  const filtered = residents.filter(r=>{
+  const filtered=residents.filter(r=>{
     if(!statusFilter) return true;
     const d=calcDeuda(r);
-    if(statusFilter==="moroso")    return d>700;
-    if(statusFilter==="leve")      return d>0&&d<=700;
+    if(statusFilter==="moroso") return d>700;
+    if(statusFilter==="leve")   return d>0&&d<=700;
     if(statusFilter==="corriente") return d===0;
     return true;
   });
 
-  const copyWA = r => {
-    const d=calcDeuda(r), n=r.residente.split("/")[0].trim();
+  const copyWA=r=>{
+    const d=calcDeuda(r),n=r.residente.split("/")[0].trim();
     const msg=`Estimado/a *${n}*,\n\nLe recordamos que tiene una deuda pendiente de *$${d.toLocaleString()} MXN*.\n\nPuede registrar su pago en: https://formularioresidentes.onrender.com\n\n_Administración del Fraccionamiento_`;
     navigator.clipboard.writeText(msg).then(()=>showToast("Mensaje copiado")).catch(()=>showToast("Error al copiar",false));
   };
 
-  const handleDelete = async () => {
+  const handleDelete=async()=>{
     setDelLoading(true);
-    try { await api.delete(`/api/residents/${deleteTarget.id}`); setDeleteTarget(null); setSelected(null); load(); showToast("Residente eliminado"); }
-    catch(err){ showToast(err.response?.data?.error||"Error al eliminar",false); }
-    finally{ setDelLoading(false); }
+    try{await api.delete(`/api/residents/${deleteTarget.id}`);setDelete(null);setSelected(null);load();showToast("Residente eliminado");}
+    catch(err){showToast(err.response?.data?.error||"Error",false);}
+    finally{setDelLoading(false);}
   };
 
   return (
-    <div style={{ padding:"2rem", flex:1 }}>
-      {toast&&<div className={`toast ${toast.ok?"":"error"}`} style={{ position:"fixed",top:16,right:16,zIndex:100,padding:"12px 20px",borderRadius:"var(--radius)",boxShadow:"0 4px 16px rgba(0,0,0,0.12)" }}>{toast.msg}</div>}
+    <div style={{padding:"2rem",flex:1}}>
+      {toast&&<div className={`toast ${toast.ok?"":"error"}`} style={{position:"fixed",top:16,right:16,zIndex:100,padding:"12px 20px",borderRadius:"var(--radius)",boxShadow:"0 4px 16px rgba(0,0,0,0.12)"}}>{toast.msg}</div>}
 
-      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4,flexWrap:"wrap",gap:12 }}>
-        <div>
-          <div className="page-title">Residentes</div>
-          <div className="page-sub">{filtered.length} residente{filtered.length!==1?"s":""} · Gestión y seguimiento de pagos</div>
-        </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4,flexWrap:"wrap",gap:12}}>
+        <div><div className="page-title">Residentes</div><div className="page-sub">{filtered.length} residente{filtered.length!==1?"s":""}</div></div>
         <button className="btn primary" onClick={()=>setEditModal("new")}>+ Agregar residente</button>
       </div>
 
-      {/* Panel de detalle */}
-      {selected && (
+      {/* Panel detalle */}
+      {selected&&(
         <div className="detail-panel">
           <div className="detail-header">
             <div>
               <div className="name">{selected.residente.split("/")[0].trim()}</div>
               <div className="meta">{selected.calle} · Lote {selected.lote} · Mza {selected.mza}{selected.telefono?` · ${selected.telefono}`:""}</div>
             </div>
-            <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
               <span className={badgeCls(statusOf(calcDeuda(selected)))}>{badgeLbl(statusOf(calcDeuda(selected)))}</span>
               {calcDeuda(selected)>0&&<span className="detail-deuda">{fmtMXN(calcDeuda(selected))}</span>}
-              <RowMenu onEdit={()=>setEditModal(selected)} onDelete={()=>setDeleteTarget(selected)} />
+              <button className="btn" style={{fontSize:12,padding:"4px 10px"}} onClick={()=>setHistorial(selected.id)}>📋 Historial</button>
+              <button className="btn" style={{fontSize:12,padding:"4px 10px"}} onClick={()=>setEditModal(selected)}>✏️ Editar</button>
               <button className="btn-close" onClick={()=>setSelected(null)}>✕</button>
             </div>
           </div>
-          <PayGrid r={selected} />
+          <PayGrid r={selected}/>
           {calcDeuda(selected)>0&&(
             <div className="detail-actions">
               <button className="btn green" onClick={()=>copyWA(selected)}>
@@ -193,26 +323,28 @@ export default function ResidentesPage() {
         </select>
       </div>
 
-      <div className="card" style={{ marginBottom:0 }}>
+      <div className="card" style={{marginBottom:0}}>
         <table>
-          <thead><tr><th>Residente</th><th>Calle</th><th>Lote / Mza</th><th>Teléfono</th><th>Estado</th><th style={{ textAlign:"right" }}>Deuda</th><th></th></tr></thead>
+          <thead><tr><th>Residente</th><th>Calle</th><th>Lote / Mza</th><th>Teléfono</th><th>Estado</th><th style={{textAlign:"right"}}>Deuda</th><th></th></tr></thead>
           <tbody>
-            {loading ? (
-              <tr><td colSpan="7" style={{ textAlign:"center",padding:"3rem",color:"var(--text2)" }}>Cargando...</td></tr>
-            ) : filtered.length===0 ? (
-              <tr><td colSpan="7" style={{ textAlign:"center",padding:"3rem",color:"var(--text2)" }}>Sin resultados</td></tr>
-            ) : filtered.map(r=>{
+            {loading?<tr><td colSpan="7" style={{textAlign:"center",padding:"3rem",color:"var(--text2)"}}>Cargando...</td></tr>
+            :filtered.length===0?<tr><td colSpan="7" style={{textAlign:"center",padding:"3rem",color:"var(--text2)"}}>Sin resultados</td></tr>
+            :filtered.map(r=>{
               const d=calcDeuda(r); const st=statusOf(d);
               return (
-                <tr key={r.id} onClick={()=>setSelected(r)} style={{ cursor:"pointer" }}>
-                  <td style={{ fontWeight:500 }}>{r.residente.split("/")[0].trim()}</td>
-                  <td style={{ color:"var(--text2)" }}>{r.calle}</td>
-                  <td style={{ color:"var(--text3)" }}>L{r.lote} · Mza {r.mza}</td>
-                  <td style={{ color:"var(--text3)",fontSize:12 }}>{r.telefono||"—"}</td>
+                <tr key={r.id} onClick={()=>setSelected(r)} style={{cursor:"pointer"}}>
+                  <td style={{fontWeight:500}}>{r.residente.split("/")[0].trim()}</td>
+                  <td style={{color:"var(--text2)"}}>{r.calle}</td>
+                  <td style={{color:"var(--text3)"}}>L{r.lote} · Mza {r.mza}</td>
+                  <td style={{color:"var(--text3)",fontSize:12}}>{r.telefono||"—"}</td>
                   <td><span className={badgeCls(st)}>{badgeLbl(st)}</span></td>
-                  <td style={{ textAlign:"right",fontWeight:600,color:d>0?"var(--red)":"var(--green)" }}>{d>0?fmtMXN(d):"—"}</td>
+                  <td style={{textAlign:"right",fontWeight:600,color:d>0?"var(--red)":"var(--green)"}}>{d>0?fmtMXN(d):"—"}</td>
                   <td>
-                    <RowMenu onEdit={()=>setEditModal(r)} onDelete={()=>setDeleteTarget(r)} />
+                    <RowMenu
+                      onHistory={()=>setHistorial(r.id)}
+                      onEdit={()=>setEditModal(r)}
+                      onDelete={()=>setDelete(r)}
+                    />
                   </td>
                 </tr>
               );
@@ -221,25 +353,22 @@ export default function ResidentesPage() {
         </table>
       </div>
 
-      {/* Modal editar/crear */}
-      {editModal&&(
-        <ResidentModal resident={editModal==="new"?null:editModal} onClose={()=>setEditModal(null)}
-          onSaved={()=>{ setEditModal(null); setSelected(null); load(); showToast(editModal==="new"?"Residente agregado":"Cambios guardados"); }}/>
-      )}
+      {editModal&&<ResidentModal resident={editModal==="new"?null:editModal} onClose={()=>setEditModal(null)} onSaved={()=>{setEditModal(null);setSelected(null);load();showToast(editModal==="new"?"Residente agregado":"Cambios guardados");}}/>}
 
-      {/* Modal confirmar eliminación */}
       {deleteTarget&&(
-        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem" }}>
-          <div style={{ background:"var(--surface)",borderRadius:"var(--radius-lg)",padding:"1.5rem",width:"100%",maxWidth:400,boxShadow:"0 8px 32px rgba(0,0,0,0.18)" }}>
-            <div style={{ fontSize:16,fontWeight:600,marginBottom:8 }}>Eliminar residente</div>
-            <p style={{ fontSize:13,color:"var(--text2)",marginBottom:16 }}>¿Estás seguro de eliminar a <strong>{deleteTarget.residente.split("/")[0].trim()}</strong>? Esta acción no se puede deshacer.</p>
-            <div style={{ display:"flex",gap:8 }}>
-              <button className="btn" style={{ flex:1,justifyContent:"center" }} onClick={()=>setDeleteTarget(null)}>Cancelar</button>
-              <button className="btn red" style={{ flex:1,justifyContent:"center" }} onClick={handleDelete} disabled={delLoading}>{delLoading?"Eliminando...":"Sí, eliminar"}</button>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+          <div style={{background:"var(--surface)",borderRadius:"var(--radius-lg)",padding:"1.5rem",width:"100%",maxWidth:400,boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}}>
+            <div style={{fontSize:16,fontWeight:600,marginBottom:8}}>Eliminar residente</div>
+            <p style={{fontSize:13,color:"var(--text2)",marginBottom:16}}>¿Eliminar a <strong>{deleteTarget.residente.split("/")[0].trim()}</strong>? No se puede deshacer.</p>
+            <div style={{display:"flex",gap:8}}>
+              <button className="btn" style={{flex:1,justifyContent:"center"}} onClick={()=>setDelete(null)}>Cancelar</button>
+              <button className="btn red" style={{flex:1,justifyContent:"center"}} onClick={handleDelete} disabled={delLoading}>{delLoading?"Eliminando...":"Sí, eliminar"}</button>
             </div>
           </div>
         </div>
       )}
+
+      {historialId && <HistorialModal residentId={historialId} onClose={()=>setHistorial(null)}/>}
     </div>
   );
 }
