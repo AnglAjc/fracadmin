@@ -49,29 +49,38 @@ const Check  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 const Trash  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>;
 const Copy   = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>;
 
-const DATOS_BANCO = `*BANAMEX*\nErnesto Flores Castañón\n002180701208704228`;
+const BANCO_DATOS = [
+  { label: "Banco",    valor: "BANAMEX" },
+  { label: "Titular",  valor: "Ernesto Flores Castañón" },
+  { label: "Cuenta",   valor: "002180701208704228" },
+];
 
 // ── Paso 1: Datos personales ───────────────────────────────────
 function Paso1({ form, setF, searchResults, searching, onSelectResident, onNext, error }) {
-  const [copied, setCopied] = useState(false);
+  const [copiedIdx, setCopiedIdx] = useState(null);
   const inp = { width:"100%",padding:"11px 13px",borderRadius:10,border:"0.5px solid var(--border2)",fontSize:14,background:"var(--surface)",color:"var(--text)",outline:"none",fontFamily:"inherit",boxSizing:"border-box" };
 
-  const copyBanco = () => {
-    navigator.clipboard.writeText(DATOS_BANCO).then(() => { setCopied(true); setTimeout(()=>setCopied(false),2500); });
+  const copyDato = (idx, valor) => {
+    navigator.clipboard.writeText(valor).then(() => { setCopiedIdx(idx); setTimeout(()=>setCopiedIdx(null),2000); });
   };
 
   return (
     <div>
-      {/* Datos bancarios */}
+      {/* Datos bancarios - copiar dato por dato */}
       <div style={{ background:"var(--blue-bg)",border:"1px solid var(--blue)",borderRadius:12,padding:"14px 16px",marginBottom:18 }}>
-        <div style={{ fontSize:12,fontWeight:700,color:"var(--blue-text)",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center" }}>
-          <span>🏦 Datos para transferencia bancaria</span>
-          <button type="button" onClick={copyBanco}
-                  style={{ display:"flex",alignItems:"center",gap:5,padding:"5px 10px",borderRadius:7,border:"1px solid var(--blue)",background:copied?"var(--green-bg)":"var(--surface)",color:copied?"var(--green)":"var(--blue)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",transition:"all 0.2s" }}>
-            {copied ? <><Check/> Copiado</> : <><Copy/> Copiar</>}
-          </button>
-        </div>
-        <div style={{ fontFamily:"monospace",fontSize:13,color:"var(--blue-text)",lineHeight:1.8,whiteSpace:"pre-line" }}>{DATOS_BANCO}</div>
+        <div style={{ fontSize:12,fontWeight:700,color:"var(--blue-text)",marginBottom:10 }}>🏦 Datos para transferencia bancaria</div>
+        {BANCO_DATOS.map((d,i) => (
+          <div key={i} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:i<BANCO_DATOS.length-1?"0.5px solid rgba(24,95,165,0.15)":"none" }}>
+            <div>
+              <div style={{ fontSize:10,fontWeight:600,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em" }}>{d.label}</div>
+              <div style={{ fontSize:14,fontWeight:700,color:"var(--blue-text)",fontFamily:"monospace",marginTop:1 }}>{d.valor}</div>
+            </div>
+            <button type="button" onClick={()=>copyDato(i,d.valor)}
+                    style={{ display:"flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,border:"1px solid var(--blue)",background:copiedIdx===i?"var(--green-bg)":"var(--surface)",color:copiedIdx===i?"var(--green)":"var(--blue)",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",transition:"all 0.2s",flexShrink:0 }}>
+              {copiedIdx===i ? <><Check/> Copiado</> : <><Copy/> Copiar</>}
+            </button>
+          </div>
+        ))}
       </div>
 
       {error && <div style={{ background:"var(--red-bg)",color:"var(--red)",borderRadius:9,padding:"10px 13px",fontSize:13,marginBottom:14,display:"flex",gap:8 }}><span>⚠️</span>{error}</div>}
@@ -118,7 +127,18 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
   const fileRefs = useRef({});
 
   const addProp = () => {
-    setPropiedades(prev => [...prev, emptyProp()]);
+    // Si hay opciones del residente aún no asignadas, preseleccionar la siguiente
+    const propIds = propiedades.map(p=>p.resident_id).filter(Boolean);
+    const siguiente = residenteOpciones.find(rd => !propIds.includes(rd.id));
+    const nuevaProp = emptyProp();
+    if (siguiente) {
+      nuevaProp.calle       = siguiente.calle;
+      nuevaProp.lote        = siguiente.lote;
+      nuevaProp.mza         = siguiente.mza || "";
+      nuevaProp.resident_id = siguiente.id;
+      nuevaProp.residentData = siguiente;
+    }
+    setPropiedades(prev => [...prev, nuevaProp]);
     setPropActiva(propiedades.length);
   };
   const removeProp = (idx) => {
@@ -526,10 +546,10 @@ export default function App() {
           Tu comprobante fue enviado a la administración.<br/>
           Recibirás confirmación por WhatsApp al <strong>{form.telefono}</strong>.
         </p>
-        <div style={{background:"var(--amber-bg)",borderRadius:10,padding:"12px 14px",marginBottom:20,textAlign:"left"}}>
-          <div style={{fontSize:12,fontWeight:700,color:"var(--amber)",marginBottom:4}}>📅 Fecha límite de pago</div>
-          <div style={{fontSize:12,color:"var(--amber)"}}>
-            Recuerda que la fecha límite de pago mensual es el <strong>día 12 de cada mes</strong>.
+        <div style={{background:"var(--green-bg)",borderRadius:10,padding:"12px 14px",marginBottom:20,textAlign:"left",border:"1px solid var(--green-border)"}}>
+          <div style={{fontSize:12,fontWeight:700,color:"var(--green)",marginBottom:4}}>✅ ¿Y ahora qué sigue?</div>
+          <div style={{fontSize:12,color:"var(--green)"}}>
+            Recibirás tu comprobante de pago aprobado a más tardar el <strong>día 12 del mes</strong>.
           </div>
         </div>
         <div style={{background:"var(--surface2)",borderRadius:10,padding:"12px 14px",marginBottom:20,textAlign:"left"}}>
