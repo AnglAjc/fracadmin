@@ -321,25 +321,56 @@ async function generarPDFRendicion(movimientos, cuentas, resumen) {
       byCat[cat].push(m);
     });
 
+    // Palabras clave que identifican cuotas de residentes
+    const CUOTA_KEYWORDS = ["cuota", "mantenimiento", "residente", "mensualidad", "pago mensual"];
+    const esCuotaResidentes = (cat) =>
+      CUOTA_KEYWORDS.some(kw => cat.toLowerCase().includes(kw));
+
     for (const [cat, items] of Object.entries(byCat)) {
       if (y > 250) { doc.addPage(); y = 20; }
       const subtotal = items.reduce((s,m)=>s+Number(m.monto),0);
-      doc.autoTable({
-        startY: y,
-        head: [[{ content:cat, colSpan:3 }]],
-        body: items.map(m=>[
-          fmtFecha(m.fecha, {day:"2-digit",month:"2-digit",year:"2-digit"}),
-          m.concepto,
-          `$${Number(m.monto).toLocaleString("es-MX")}`,
-        ]),
-        foot: [["","Subtotal",`$${subtotal.toLocaleString("es-MX")}`]],
-        theme:"grid",
-        headStyles:{ fillColor:[234,243,222], textColor:[30,30,28], fontStyle:"bold", fontSize:9 },
-        bodyStyles:{ fontSize:9 },
-        footStyles:{ fillColor:[234,243,222], fontStyle:"bold", fontSize:9 },
-        columnStyles:{ 0:{cellWidth:22}, 2:{halign:"right"} },
-        margin:{ left:14, right:14 },
-      });
+
+      if (esCuotaResidentes(cat)) {
+        // Cuotas de residentes: mostrar una sola fila resumida
+        const mesesSet = [...new Set(items.map(m => {
+          const [yy, mm] = String(m.fecha).slice(0,7).split("-");
+          return `${MESES_FULL[Number(mm)-1]} ${yy}`;
+        }))].join(", ");
+        doc.autoTable({
+          startY: y,
+          head: [[{ content: cat, colSpan: 3 }]],
+          body: [[
+            "",
+            `${items.length} pagos recibidos${mesesSet ? ` (${mesesSet})` : ""}`,
+            `$${subtotal.toLocaleString("es-MX")}`,
+          ]],
+          foot: [["", "Subtotal", `$${subtotal.toLocaleString("es-MX")}`]],
+          theme: "grid",
+          headStyles: { fillColor:[234,243,222], textColor:[30,30,28], fontStyle:"bold", fontSize:9 },
+          bodyStyles: { fontSize:9 },
+          footStyles: { fillColor:[234,243,222], fontStyle:"bold", fontSize:9 },
+          columnStyles: { 0:{cellWidth:22}, 2:{halign:"right"} },
+          margin: { left:14, right:14 },
+        });
+      } else {
+        // Otras categorías de ingreso: mostrar detalle normal
+        doc.autoTable({
+          startY: y,
+          head: [[{ content:cat, colSpan:3 }]],
+          body: items.map(m=>[
+            fmtFecha(m.fecha, {day:"2-digit",month:"2-digit",year:"2-digit"}),
+            m.concepto,
+            `$${Number(m.monto).toLocaleString("es-MX")}`,
+          ]),
+          foot: [["","Subtotal",`$${subtotal.toLocaleString("es-MX")}`]],
+          theme:"grid",
+          headStyles:{ fillColor:[234,243,222], textColor:[30,30,28], fontStyle:"bold", fontSize:9 },
+          bodyStyles:{ fontSize:9 },
+          footStyles:{ fillColor:[234,243,222], fontStyle:"bold", fontSize:9 },
+          columnStyles:{ 0:{cellWidth:22}, 2:{halign:"right"} },
+          margin:{ left:14, right:14 },
+        });
+      }
       y = doc.lastAutoTable.finalY + 6;
     }
 
