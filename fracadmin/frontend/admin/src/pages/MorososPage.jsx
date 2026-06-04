@@ -206,6 +206,7 @@ export default function MorososPage() {
                             </button>
                           </div>
                         </td>
+                      </tr>
                     ))}
                   </tbody>
                 </table>
