@@ -26,209 +26,168 @@ function RowMenu({ onEdit, onDelete, onHistory }) {
 }
 
 function PayGrid({ r, onRefresh }) {
-  const [data, setData] = useState(r);
-  const [toggling, setToggling] = useState(null);
-  const now=new Date(); const maxM26=now.getFullYear()>=2026?now.getMonth():0;
+  const [data, setData]       = useState(r);
+  const [confirm, setConfirm] = useState(null);
+  const [monto, setMonto]     = useState("400");
+  const [metodo, setMetodo]   = useState("efectivo");
+  const [saving, setSaving]   = useState(false);
+  const now    = new Date();
+  const maxM26 = now.getFullYear() >= 2026 ? now.getMonth() : 0;
 
   useEffect(() => { setData(r); }, [r]);
 
-  const p25=data.pagos25||{}, p26=data.pagos26||{};
+  const p25 = data.pagos25 || {};
+  const p26 = data.pagos26 || {};
 
-  const cls=(v,y,m)=>{ if(y===2026&&m>=maxM26)return"empty"; if(v==="pendiente")return"pending"; if(typeof v==="number"&&v>0)return"paid"; return"empty"; };
-  const txt=(v,y,m)=>{ if(y===2026&&m>=maxM26)return"—"; if(v==="pendiente")return"✗"; if(typeof v==="number"&&v>0)return"✓"; return"—"; };
+  const cls = (v, y, m) => {
+    if (y === 2026 && m >= maxM26) return "empty";
+    if (v === "vacio") return "empty";
+    if (v === "pendiente" || v === null || v === undefined) return "pending";
+    if (typeof v === "number" && v > 0) return "paid";
+    return "empty";
+  };
+  const txt = (v, y, m) => {
+    if (y === 2026 && m >= maxM26) return "—";
+    if (v === "vacio") return "—";
+    if (v === "pendiente" || v === null || v === undefined) return "✗";
+    if (typeof v === "number" && v > 0) return "✓";
+    return "—";
+  };
 
-  const handleClick = async (anio, mes) => {
-    const key = `${anio}-${mes}`;
-    const p = anio===2025?p25:p26;
+  const handleCellClick = (anio, mes) => {
+    if (anio === 2026 && mes >= maxM26) return;
+    const p   = anio === 2025 ? p25 : p26;
     const val = p[mes];
-    if ((anio===2026&&mes>=maxM26)) return; // futuro, no editable
-    const accion = (val==="pendiente") ? "pagar" : "deshacer";
-    setToggling(key);
+    if (val === "vacio") return;
+    const isPaid = typeof val === "number" && val > 0;
+    setMonto(isPaid ? String(val) : "400");
+    setMetodo("efectivo");
+    setConfirm({
+      anio, mes,
+      accion: isPaid ? "deshacer" : "pagar",
+      label:  `${MESES_FULL[mes]} ${anio}`,
+      isPaid,
+    });
+  };
+
+  const doToggle = async () => {
+    if (!confirm) return;
+    setSaving(true);
     try {
-      const { data: updated } = await api.patch(`/api/residents/${data.id}/toggle-pago`, { anio, mes, accion });
+      const { data: updated } = await api.patch(
+        `/api/residents/${data.id}/toggle-pago`,
+        { anio: confirm.anio, mes: confirm.mes, accion: confirm.accion, monto: Number(monto) || 400, metodo }
+      );
       setData(updated);
-      if(onRefresh) onRefresh(updated);
-    } catch(e){ console.error(e); }
-    finally { setToggling(null); }
+      if (onRefresh) onRefresh(updated);
+      setConfirm(null);
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
   };
 
   const Cell = ({ val, anio, mes }) => {
-    const key = `${anio}-${mes}`;
-    const isFuture = anio===2026&&mes>=maxM26;
-    const isLoading = toggling===key;
-    const c = cls(val,anio,mes);
+    const isFuture = anio === 2026 && mes >= maxM26;
+    const isVacio  = val === "vacio";
+    const c = cls(val, anio, mes);
+    const isPaid = typeof val === "number" && val > 0;
     return (
       <td className={c}
-          style={{ cursor:isFuture?"default":"pointer", opacity:isLoading?0.5:1, transition:"opacity 0.1s", position:"relative" }}
-          title={isFuture?"":"Clic para marcar/desmarcar pago"}
-          onClick={()=>!isFuture&&handleClick(anio,mes)}>
-        {isLoading ? "…" : txt(val,anio,mes)}
+          style={{ cursor: (isFuture || isVacio) ? "default" : "pointer" }}
+          title={isFuture || isVacio ? "" : isPaid ? "Clic para deshacer pago" : "Clic para registrar pago"}
+          onClick={() => !isFuture && !isVacio && handleCellClick(anio, mes)}>
+        {txt(val, anio, mes)}
       </td>
     );
   };
 
-  return (
-    <div className="pay-grid scroll-x" style={{ marginTop:12 }}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <div className="pay-year">2025</div>
-        <div style={{fontSize:10,color:"var(--text3)"}}>Clic en una celda para marcar/desmarcar pago</div>
-      </div>
-      <table><thead><tr>{MESES.map(m=><th key={m}>{m}</th>)}</tr></thead>
-        <tbody><tr>{MESES.map((_,i)=><Cell key={i} val={p25[i]} anio={2025} mes={i}/>)}</tr></tbody>
-      </table>
-      <div className="pay-year" style={{marginTop:8}}>2026</div>
-      <table><thead><tr>{MESES.map(m=><th key={m}>{m}</th>)}</tr></thead>
-        <tbody><tr>{MESES.map((_,i)=><Cell key={i} val={p26[i]} anio={2026} mes={i}/>)}</tr></tbody>
-      </table>
-    </div>
+  const inp  = { width:"100%", padding:"9px 10px", borderRadius:8, border:"0.5px solid var(--border2)", fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box", background:"var(--surface)", color:"var(--text)" };
+  const btnM = (v, label) => (
+    <button type="button" onClick={() => setMetodo(v)}
+            style={{ flex:1, padding:"8px", borderRadius:8, fontSize:12, fontWeight:metodo===v?700:400, cursor:"pointer", fontFamily:"inherit", border:`1.5px solid ${metodo===v?"var(--blue)":"var(--border2)"}`, background:metodo===v?"var(--blue-bg)":"var(--surface)", color:metodo===v?"var(--blue-text)":"var(--text2)" }}>
+      {label}
+    </button>
   );
-}
-
-// ── Modal Historial de Pagos ───────────────────────────────────
-function HistorialModal({ residentId, onClose }) {
-  const [data, setData]     = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [imgModal, setImgModal] = useState(null);
-
-  useEffect(() => {
-    api.get(`/api/residents/${residentId}/historial`)
-      .then(r => setData(r.data))
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [residentId]);
-
-  const verComprobante = async (pagoId) => {
-    try {
-      const { data: d } = await api.get(`/api/payments/${pagoId}/comprobante`);
-      if (d.comprobante) setImgModal(d.comprobante);
-      else alert("Este pago no tiene comprobante adjunto");
-    } catch { alert("Error al cargar comprobante"); }
-  };
-
-  const STATUS_BADGE = {
-    aprobado:  { cls:"badge green", label:"Aprobado" },
-    rechazado: { cls:"badge red",   label:"Rechazado" },
-    pendiente: { cls:"badge amber", label:"Pendiente" },
-  };
 
   return (
-    <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem" }}>
-      <div style={{ background:"var(--surface)",borderRadius:"var(--radius-lg)",width:"100%",maxWidth:680,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden" }}>
-
-        {/* Header */}
-        <div style={{ padding:"16px 20px",borderBottom:"0.5px solid var(--border)",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0 }}>
-          <div>
-            <div style={{ fontWeight:600,fontSize:15 }}>
-              Historial de pagos — {data?.resident?.residente?.split("/")[0].trim() || "…"}
-            </div>
-            {data?.resident && (
-              <div style={{ fontSize:12,color:"var(--text2)",marginTop:2 }}>
-                {data.resident.calle} · L{data.resident.lote} · Mza {data.resident.mza}
-              </div>
-            )}
-          </div>
-          <button className="btn-close" onClick={onClose}>✕</button>
+    <>
+      <div className="pay-grid scroll-x" style={{ marginTop:12 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div className="pay-year">2025</div>
+          <div style={{ fontSize:10, color:"var(--text3)" }}>Toca ✗ para registrar · ✓ para deshacer</div>
         </div>
-
-        {/* Contenido */}
-        <div style={{ overflowY:"auto",flex:1 }}>
-          {loading ? (
-            <div style={{ padding:"3rem",textAlign:"center",color:"var(--text2)" }}>Cargando historial...</div>
-          ) : data?.pagos?.length === 0 ? (
-            <div style={{ padding:"3rem",textAlign:"center",color:"var(--text2)" }}>
-              <div style={{ fontSize:36,marginBottom:12 }}>📭</div>
-              <p>Este residente aún no tiene pagos registrados en el sistema.</p>
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Fecha envío</th>
-                  <th>Mes pagado</th>
-                  <th style={{ textAlign:"right" }}>Monto</th>
-                  <th>Estado</th>
-                  <th>Revisado</th>
-                  <th>Comprobante</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.pagos.map(p => {
-                  const sb = STATUS_BADGE[p.status] || STATUS_BADGE.pendiente;
-                  const mesNombre = MESES_FULL[Number(p.mes)-1] || p.mes;
-                  return (
-                    <tr key={p.id}>
-                      <td style={{ fontSize:12,color:"var(--text3)",whiteSpace:"nowrap" }}>{p.fecha_envio}</td>
-                      <td style={{ fontWeight:500,fontSize:13 }}>{mesNombre} {p.anio}</td>
-                      <td style={{ textAlign:"right",fontWeight:600,color:"var(--blue)" }}>{fmtMXN(p.monto)}</td>
-                      <td>
-                        <span className={sb.cls}>{sb.label}</span>
-                        {p.rejection_reason && (
-                          <div style={{ fontSize:11,color:"var(--text3)",marginTop:3,maxWidth:160 }} title={p.rejection_reason}>
-                            {p.rejection_reason.slice(0,40)}{p.rejection_reason.length>40?"…":""}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ fontSize:12,color:"var(--text2)" }}>
-                        {p.fecha_revision ? (
-                          <div>
-                            <div>{p.fecha_revision}</div>
-                            <div style={{ fontSize:11,color:"var(--text3)" }}>{p.revisado_por}</div>
-                          </div>
-                        ) : "—"}
-                        {p.whatsapp_sent && <div style={{ fontSize:10,color:"#25D366",marginTop:2 }}>✓ WA enviado</div>}
-                      </td>
-                      <td>
-                        {p.comprobante_url ? (
-                          <button className="btn" style={{ fontSize:11,padding:"3px 8px" }} onClick={() => verComprobante(p.id)}>
-                            🖼 Ver
-                          </button>
-                        ) : <span style={{ color:"var(--text3)",fontSize:12 }}>—</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {/* Footer resumen */}
-        {data?.pagos?.length > 0 && (
-          <div style={{ padding:"12px 20px",borderTop:"0.5px solid var(--border)",background:"var(--surface2)",display:"flex",gap:16,flexShrink:0,flexWrap:"wrap" }}>
-            {["aprobado","pendiente","rechazado"].map(st => {
-              const count = data.pagos.filter(p=>p.status===st).length;
-              if (count === 0) return null;
-              const sb = STATUS_BADGE[st];
-              return <span key={st} className={sb.cls} style={{ fontSize:12 }}>{sb.label}: {count}</span>;
-            })}
-            <span style={{ marginLeft:"auto",fontSize:12,fontWeight:600,color:"var(--blue)" }}>
-              Total aprobado: {fmtMXN(data.pagos.filter(p=>p.status==="aprobado").reduce((s,p)=>s+Number(p.monto),0))}
-            </span>
-          </div>
-        )}
+        <table>
+          <thead><tr>{MESES.map(m => <th key={m}>{m}</th>)}</tr></thead>
+          <tbody><tr>{MESES.map((_,i) => <Cell key={i} val={p25[i]} anio={2025} mes={i}/>)}</tr></tbody>
+        </table>
+        <div className="pay-year" style={{ marginTop:8 }}>2026</div>
+        <table>
+          <thead><tr>{MESES.map(m => <th key={m}>{m}</th>)}</tr></thead>
+          <tbody><tr>{MESES.map((_,i) => <Cell key={i} val={p26[i]} anio={2026} mes={i}/>)}</tr></tbody>
+        </table>
       </div>
 
-      {/* Modal imagen comprobante */}
-      {imgModal && (
-        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:60,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem" }} onClick={()=>setImgModal(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{ background:"var(--surface)",borderRadius:"var(--radius-lg)",overflow:"hidden",maxWidth:"85vw",maxHeight:"88vh",display:"flex",flexDirection:"column" }}>
-            <div style={{ padding:"10px 16px",borderBottom:"0.5px solid var(--border)",display:"flex",justifyContent:"space-between",alignItems:"center" }}>
-              <span style={{ fontWeight:500,fontSize:13 }}>Comprobante de pago</span>
-              <button className="btn" style={{ padding:"4px 10px",fontSize:12 }} onClick={()=>setImgModal(null)}>Cerrar ✕</button>
-            </div>
-            <div style={{ overflow:"auto",padding:"1rem",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center" }}>
-              {imgModal.startsWith("data:application/pdf")
-                ? <iframe src={imgModal} style={{ width:"70vw",height:"72vh",border:"none" }} title="Comprobante"/>
-                : <img src={imgModal} alt="Comprobante" style={{ maxWidth:"70vw",maxHeight:"72vh",objectFit:"contain",borderRadius:"var(--radius)" }}/>}
-            </div>
+      {confirm && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:60,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem" }}>
+          <div style={{ background:"var(--surface)",borderRadius:"var(--radius-lg)",padding:"1.5rem",width:"100%",maxWidth:380,boxShadow:"0 8px 32px rgba(0,0,0,0.2)" }}>
+            {confirm.accion === "pagar" ? (
+              <>
+                <div style={{ fontSize:15,fontWeight:700,marginBottom:6 }}>✅ Registrar pago — {confirm.label}</div>
+                <div style={{ fontSize:13,color:"var(--text2)",marginBottom:14,lineHeight:1.5 }}>
+                  Pago de <strong>{data.residente.split("/")[0].trim()}</strong> · <strong>{confirm.label}</strong>.
+                  Se registrará en Finanzas automáticamente.
+                </div>
+
+                <div style={{ marginBottom:14 }}>
+                  <label style={{ display:"block",fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:6 }}>Monto pagado (MXN)</label>
+                  <div style={{ position:"relative" }}>
+                    <span style={{ position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"var(--text3)",fontSize:14 }}>$</span>
+                    <input autoFocus type="number" min="1" step="1" value={monto}
+                           onChange={e => setMonto(e.target.value)}
+                           onKeyDown={e => e.key==="Enter" && doToggle()}
+                           style={{ ...inp, paddingLeft:26 }}/>
+                  </div>
+                  <div style={{ fontSize:11,color:"var(--text3)",marginTop:4 }}>Mensualidad estándar: $400 MXN</div>
+                </div>
+
+                <div style={{ marginBottom:16 }}>
+                  <label style={{ display:"block",fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:6 }}>Método de pago</label>
+                  <div style={{ display:"flex",gap:6 }}>
+                    {btnM("efectivo","💵 Efectivo")}
+                    {btnM("debito",  "💳 Débito")}
+                    {btnM("transferencia","📱 Transferencia")}
+                  </div>
+                </div>
+
+                <div style={{ display:"flex",gap:8 }}>
+                  <button className="btn" style={{ flex:1,justifyContent:"center" }} onClick={() => setConfirm(null)}>Cancelar</button>
+                  <button className="btn primary" style={{ flex:1,justifyContent:"center" }} onClick={doToggle} disabled={saving || !monto}>
+                    {saving ? "Guardando..." : "✓ Confirmar pago"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize:15,fontWeight:700,marginBottom:6 }}>↩ Deshacer pago — {confirm.label}</div>
+                <div style={{ fontSize:13,color:"var(--text2)",marginBottom:16,lineHeight:1.5 }}>
+                  ¿Marcar <strong>{confirm.label}</strong> como <strong>pendiente</strong> nuevamente?
+                  Se eliminará el registro en Finanzas.
+                </div>
+                <div style={{ display:"flex",gap:8 }}>
+                  <button className="btn" style={{ flex:1,justifyContent:"center" }} onClick={() => setConfirm(null)}>Cancelar</button>
+                  <button className="btn red" style={{ flex:1,justifyContent:"center" }} onClick={doToggle} disabled={saving}>
+                    {saving ? "Deshaciendo..." : "↩ Deshacer pago"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
-// ── Modal crear/editar ─────────────────────────────────────────
+
 function ResidentModal({ resident, onClose, onSaved }) {
   const isEdit=!!resident?.id;
   const [form,setForm]=useState({ calle:resident?.calle||"",lote:resident?.lote||"",mza:resident?.mza||"",residente:resident?.residente||"",telefono:resident?.telefono||"",deuda_extra:resident?.deuda_extra!=null?String(resident.deuda_extra):"0",pausado:resident?.pausado||false });
