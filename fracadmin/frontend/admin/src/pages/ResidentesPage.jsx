@@ -136,7 +136,6 @@ function PayGrid({ r, onRefresh }) {
                   Pago de <strong>{data.residente.split("/")[0].trim()}</strong> · <strong>{confirm.label}</strong>.
                   Se registrará en Finanzas automáticamente.
                 </div>
-
                 <div style={{ marginBottom:14 }}>
                   <label style={{ display:"block",fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:6 }}>Monto pagado (MXN)</label>
                   <div style={{ position:"relative" }}>
@@ -148,7 +147,6 @@ function PayGrid({ r, onRefresh }) {
                   </div>
                   <div style={{ fontSize:11,color:"var(--text3)",marginTop:4 }}>Mensualidad estándar: $400 MXN</div>
                 </div>
-
                 <div style={{ marginBottom:16 }}>
                   <label style={{ display:"block",fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:6 }}>Método de pago</label>
                   <div style={{ display:"flex",gap:6 }}>
@@ -157,7 +155,6 @@ function PayGrid({ r, onRefresh }) {
                     {btnM("transferencia","📱 Transferencia")}
                   </div>
                 </div>
-
                 <div style={{ display:"flex",gap:8 }}>
                   <button className="btn" style={{ flex:1,justifyContent:"center" }} onClick={() => setConfirm(null)}>Cancelar</button>
                   <button className="btn primary" style={{ flex:1,justifyContent:"center" }} onClick={doToggle} disabled={saving || !monto}>
@@ -187,7 +184,151 @@ function PayGrid({ r, onRefresh }) {
   );
 }
 
+// ── Modal Historial de Pagos ───────────────────────────────────
+function HistorialModal({ residentId, onClose }) {
+  const [data, setData]         = useState(null);
+  const [loading, setLoading]   = useState(true);
+  const [imgModal, setImgModal] = useState(null);
 
+  useEffect(() => {
+    api.get(`/api/residents/${residentId}/historial`)
+      .then(r => setData(r.data))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [residentId]);
+
+  const verComprobante = async (pagoId) => {
+    try {
+      const { data: d } = await api.get(`/api/payments/${pagoId}/comprobante`);
+      if (d.comprobante) setImgModal(d.comprobante);
+      else alert("Este pago no tiene comprobante adjunto");
+    } catch { alert("Error al cargar comprobante"); }
+  };
+
+  const STATUS_BADGE = {
+    aprobado:  { cls:"badge green", label:"Aprobado" },
+    rechazado: { cls:"badge red",   label:"Rechazado" },
+    pendiente: { cls:"badge amber", label:"Pendiente" },
+  };
+
+  return (
+    <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem" }}>
+      <div style={{ background:"var(--surface)",borderRadius:"var(--radius-lg)",width:"100%",maxWidth:680,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden" }}>
+
+        {/* Header */}
+        <div style={{ padding:"16px 20px",borderBottom:"0.5px solid var(--border)",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0 }}>
+          <div>
+            <div style={{ fontWeight:600,fontSize:15 }}>
+              Historial de pagos — {data?.resident?.residente?.split("/")[0].trim() || "…"}
+            </div>
+            {data?.resident && (
+              <div style={{ fontSize:12,color:"var(--text2)",marginTop:2 }}>
+                {data.resident.calle} · L{data.resident.lote} · Mza {data.resident.mza}
+              </div>
+            )}
+          </div>
+          <button className="btn-close" onClick={onClose}>✕</button>
+        </div>
+
+        {/* Contenido */}
+        <div style={{ overflowY:"auto",flex:1 }}>
+          {loading ? (
+            <div style={{ padding:"3rem",textAlign:"center",color:"var(--text2)" }}>Cargando historial...</div>
+          ) : data?.pagos?.length === 0 ? (
+            <div style={{ padding:"3rem",textAlign:"center",color:"var(--text2)" }}>
+              <div style={{ fontSize:36,marginBottom:12 }}>📭</div>
+              <p>Este residente aún no tiene pagos registrados en el sistema.</p>
+            </div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha envío</th>
+                  <th>Mes pagado</th>
+                  <th style={{ textAlign:"right" }}>Monto</th>
+                  <th>Estado</th>
+                  <th>Revisado</th>
+                  <th>Comprobante</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.pagos.map(p => {
+                  const sb = STATUS_BADGE[p.status] || STATUS_BADGE.pendiente;
+                  const mesNombre = MESES_FULL[Number(p.mes)-1] || p.mes;
+                  return (
+                    <tr key={p.id}>
+                      <td style={{ fontSize:12,color:"var(--text3)",whiteSpace:"nowrap" }}>{p.fecha_envio}</td>
+                      <td style={{ fontWeight:500,fontSize:13 }}>{mesNombre} {p.anio}</td>
+                      <td style={{ textAlign:"right",fontWeight:600,color:"var(--blue)" }}>{fmtMXN(p.monto)}</td>
+                      <td>
+                        <span className={sb.cls}>{sb.label}</span>
+                        {p.rejection_reason && (
+                          <div style={{ fontSize:11,color:"var(--text3)",marginTop:3,maxWidth:160 }} title={p.rejection_reason}>
+                            {p.rejection_reason.slice(0,40)}{p.rejection_reason.length>40?"…":""}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ fontSize:12,color:"var(--text2)" }}>
+                        {p.fecha_revision ? (
+                          <div>
+                            <div>{p.fecha_revision}</div>
+                            <div style={{ fontSize:11,color:"var(--text3)" }}>{p.revisado_por}</div>
+                          </div>
+                        ) : "—"}
+                        {p.whatsapp_sent && <div style={{ fontSize:10,color:"#25D366",marginTop:2 }}>✓ WA enviado</div>}
+                      </td>
+                      <td>
+                        {p.comprobante_url ? (
+                          <button className="btn" style={{ fontSize:11,padding:"3px 8px" }} onClick={() => verComprobante(p.id)}>
+                            🖼 Ver
+                          </button>
+                        ) : <span style={{ color:"var(--text3)",fontSize:12 }}>—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Footer resumen */}
+        {data?.pagos?.length > 0 && (
+          <div style={{ padding:"12px 20px",borderTop:"0.5px solid var(--border)",background:"var(--surface2)",display:"flex",gap:16,flexShrink:0,flexWrap:"wrap" }}>
+            {["aprobado","pendiente","rechazado"].map(st => {
+              const count = data.pagos.filter(p=>p.status===st).length;
+              if (count === 0) return null;
+              const sb = STATUS_BADGE[st];
+              return <span key={st} className={sb.cls} style={{ fontSize:12 }}>{sb.label}: {count}</span>;
+            })}
+            <span style={{ marginLeft:"auto",fontSize:12,fontWeight:600,color:"var(--blue)" }}>
+              Total aprobado: {fmtMXN(data.pagos.filter(p=>p.status==="aprobado").reduce((s,p)=>s+Number(p.monto),0))}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Modal imagen comprobante */}
+      {imgModal && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:60,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem" }} onClick={()=>setImgModal(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"var(--surface)",borderRadius:"var(--radius-lg)",overflow:"hidden",maxWidth:"85vw",maxHeight:"88vh",display:"flex",flexDirection:"column" }}>
+            <div style={{ padding:"10px 16px",borderBottom:"0.5px solid var(--border)",display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+              <span style={{ fontWeight:500,fontSize:13 }}>Comprobante de pago</span>
+              <button className="btn" style={{ padding:"4px 10px",fontSize:12 }} onClick={()=>setImgModal(null)}>Cerrar ✕</button>
+            </div>
+            <div style={{ overflow:"auto",padding:"1rem",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center" }}>
+              {imgModal.startsWith("data:application/pdf")
+                ? <iframe src={imgModal} style={{ width:"70vw",height:"72vh",border:"none" }} title="Comprobante"/>
+                : <img src={imgModal} alt="Comprobante" style={{ maxWidth:"70vw",maxHeight:"72vh",objectFit:"contain",borderRadius:"var(--radius)" }}/>}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Modal crear/editar ─────────────────────────────────────────
 function ResidentModal({ resident, onClose, onSaved }) {
   const isEdit=!!resident?.id;
   const [form,setForm]=useState({ calle:resident?.calle||"",lote:resident?.lote||"",mza:resident?.mza||"",residente:resident?.residente||"",telefono:resident?.telefono||"",deuda_extra:resident?.deuda_extra!=null?String(resident.deuda_extra):"0",pausado:resident?.pausado||false });
@@ -238,18 +379,18 @@ function ResidentModal({ resident, onClose, onSaved }) {
 
 // ── Página principal ───────────────────────────────────────────
 export default function ResidentesPage() {
-  const [residents,setResidents] = useState([]);
-  const [loading,setLoading]     = useState(true);
-  const [calle,setCalle]         = useState("");
-  const [search,setSearch]       = useState("");
-  const [statusFilter,setStatus] = useState("");
-  const [selected,setSelected]   = useState(null);
-  const [editModal,setEditModal] = useState(null);
-  const [deleteTarget,setDelete] = useState(null);
+  const [residents,setResidents]       = useState([]);
+  const [loading,setLoading]           = useState(true);
+  const [calle,setCalle]               = useState("");
+  const [search,setSearch]             = useState("");
+  const [statusFilter,setStatus]       = useState("");
+  const [selected,setSelected]         = useState(null);
+  const [editModal,setEditModal]       = useState(null);
+  const [deleteTarget,setDelete]       = useState(null);
   const [multiPropFilter,setMultiPropFilter] = useState("");
-  const [historialId,setHistorial] = useState(null);
-  const [toast,setToast]         = useState(null);
-  const [delLoading,setDelLoading] = useState(false);
+  const [historialId,setHistorial]     = useState(null);
+  const [toast,setToast]               = useState(null);
+  const [delLoading,setDelLoading]     = useState(false);
 
   const showToast=(msg,ok=true)=>{setToast({msg,ok});setTimeout(()=>setToast(null),3000);};
 
@@ -272,8 +413,8 @@ export default function ResidentesPage() {
 
   const filtered = residents.filter(r=>{
     const d = calcDeuda(r);
-    if(statusFilter==="moroso")    { if(r.pausado||d<=700) return false; }
-    else if(statusFilter==="leve") { if(r.pausado||d<=0||d>700) return false; }
+    if(statusFilter==="moroso")      { if(r.pausado||d<=700) return false; }
+    else if(statusFilter==="leve")   { if(r.pausado||d<=0||d>700) return false; }
     else if(statusFilter==="corriente") { if(r.pausado||d>0) return false; }
     else if(statusFilter==="pausado")   { if(!r.pausado) return false; }
     if(multiPropFilter==="multi") {
