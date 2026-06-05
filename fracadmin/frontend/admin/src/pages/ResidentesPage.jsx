@@ -9,13 +9,22 @@ const badgeLbl   = st => st==="corriente"?"Al corriente":st==="leve"?"Deuda leve
 
 function RowMenu({ onEdit, onDelete, onHistory }) {
   const [open,setOpen] = useState(false);
+  const [openUp,setOpenUp] = useState(false);
   const ref = useRef();
+  const btnRef = useRef();
   useEffect(()=>{ const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);}; document.addEventListener("mousedown",h); return()=>document.removeEventListener("mousedown",h); },[]);
+  const handleOpen = () => {
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setOpenUp(window.innerHeight - rect.bottom < 140);
+    }
+    setOpen(o=>!o);
+  };
   return (
     <div ref={ref} style={{ position:"relative",display:"inline-block" }} onClick={e=>e.stopPropagation()}>
-      <button className="btn" style={{ padding:"3px 10px",fontSize:12 }} onClick={()=>setOpen(o=>!o)}>⋯</button>
+      <button ref={btnRef} className="btn" style={{ padding:"3px 10px",fontSize:12 }} onClick={handleOpen}>⋯</button>
       {open&&(
-        <div style={{ position:"absolute",right:0,top:"100%",marginTop:4,background:"var(--surface)",border:"0.5px solid var(--border2)",borderRadius:"var(--radius)",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:20,minWidth:150,overflow:"hidden" }}>
+        <div style={{ position:"absolute",right:0,[openUp?"bottom":"top"]:openUp?"100%":"100%",[openUp?"marginBottom":"marginTop"]:4,background:"var(--surface)",border:"0.5px solid var(--border2)",borderRadius:"var(--radius)",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:20,minWidth:150,overflow:"hidden",...(openUp?{bottom:"100%",top:"auto",marginBottom:4,marginTop:0}:{top:"100%",bottom:"auto",marginTop:4,marginBottom:0}) }}>
           <button onClick={()=>{setOpen(false);onHistory();}} style={{ display:"block",width:"100%",textAlign:"left",padding:"9px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",color:"var(--text)" }} onMouseOver={e=>e.currentTarget.style.background="var(--surface2)"} onMouseOut={e=>e.currentTarget.style.background="none"}>📋 Historial de pagos</button>
           <button onClick={()=>{setOpen(false);onEdit();}} style={{ display:"block",width:"100%",textAlign:"left",padding:"9px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",color:"var(--text)" }} onMouseOver={e=>e.currentTarget.style.background="var(--surface2)"} onMouseOut={e=>e.currentTarget.style.background="none"}>✏️ Editar</button>
           <button onClick={()=>{setOpen(false);onDelete();}} style={{ display:"block",width:"100%",textAlign:"left",padding:"9px 14px",fontSize:13,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",color:"var(--red)" }} onMouseOver={e=>e.currentTarget.style.background="var(--red-bg)"} onMouseOut={e=>e.currentTarget.style.background="none"}>🗑 Eliminar</button>
