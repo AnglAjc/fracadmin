@@ -6,6 +6,8 @@ const whatsappSvc   = require("../services/whatsapp");
 const MESES_NOMBRES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                        "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
+const MONTO_MINIMO = 400;
+
 // POST /api/payments/submit
 router.post("/submit", async (req, res) => {
   const { resident_id, nombre, telefono, calle, lote, mza,
@@ -33,6 +35,21 @@ router.post("/submit", async (req, res) => {
     console.error("[payments/submit]", err.message);
     res.status(500).json({ error: "Error al registrar el pago" });
   }
+});
+
+// GET /api/payments/check-duplicate
+router.get("/check-duplicate", async (req, res) => {
+  const { resident_id, mes, anio } = req.query;
+  if (!resident_id || !mes || !anio) return res.json({ exists: false });
+  try {
+    const { rows } = await pool.query(`
+      SELECT id FROM payment_submissions
+      WHERE resident_id=$1 AND mes=$2 AND anio=$3
+        AND status IN ('pendiente','aprobado')
+      LIMIT 1
+    `, [resident_id, mes, Number(anio)]);
+    res.json({ exists: rows.length > 0 });
+  } catch { res.json({ exists: false }); }
 });
 
 // GET /api/payments
@@ -92,6 +109,14 @@ router.patch("/:id/approve", requireAuth, async (req, res) => {
     const pago = rows[0];
     if (!pago) return res.status(404).json({ error: "Pago no encontrado" });
     if (pago.status !== "pendiente") return res.status(400).json({ error: "Ya fue revisado" });
+
+    // Validación de monto mínimo
+    if (Number(pago.monto) < MONTO_MINIMO) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        error: `El monto ($${Number(pago.monto)}) es menor al mínimo requerido de $${MONTO_MINIMO} MXN`
+      });
+    }
 
     await client.query(`
       UPDATE payment_submissions SET status='aprobado', reviewed_by=$1, reviewed_at=NOW() WHERE id=$2
@@ -175,18 +200,3 @@ router.patch("/:id/reject", requireAuth, async (req, res) => {
 });
 
 module.exports = router;
-
-// GET /api/payments/check-duplicate
-router.get("/check-duplicate", async (req, res) => {
-  const { resident_id, mes, anio } = req.query;
-  if (!resident_id || !mes || !anio) return res.json({ exists: false });
-  try {
-    const { rows } = await pool.query(`
-      SELECT id FROM payment_submissions
-      WHERE resident_id=$1 AND mes=$2 AND anio=$3
-        AND status IN ('pendiente','aprobado')
-      LIMIT 1
-    `, [resident_id, mes, Number(anio)]);
-    res.json({ exists: rows.length > 0 });
-  } catch { res.json({ exists: false }); }
-});

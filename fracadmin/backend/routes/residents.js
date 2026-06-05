@@ -124,8 +124,6 @@ router.patch("/:id/telefono", async (req, res) => {
   }
 });
 
-module.exports = router;
-
 // GET /api/residents/:id/historial — historial de pagos de un residente
 router.get("/:id/historial", requireAuth, async (req, res) => {
   try {
@@ -154,3 +152,5 @@ router.get("/:id/historial", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Error al obtener historial" });
   }
 });
+
+module.exports = router;
