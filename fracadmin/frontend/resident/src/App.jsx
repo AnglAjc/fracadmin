@@ -406,9 +406,10 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
 }
 
 // ── Paso 3: Revisión y envío ───────────────────────────────────
-function Paso3({ form, propiedades, monto, notas, setMonto, setNotas, onSubmit, onBack, loading, error }) {
+function Paso3({ form, propiedades, notas, setNotas, onSubmit, onBack, loading, error }) {
   const totalEnvios = propiedades.reduce((s,p)=>s+(p.calle&&p.lote?p.mesesSel.length:0),0);
   const propsValidas = propiedades.filter(p=>p.calle&&p.lote&&p.mesesSel.length>0);
+  const MONTO = 400;
   const inp = {width:"100%",padding:"10px 12px",borderRadius:10,border:"0.5px solid var(--border2)",fontSize:14,background:"var(--surface)",color:"var(--text)",outline:"none",fontFamily:"inherit",boxSizing:"border-box"};
 
   return (
@@ -424,7 +425,7 @@ function Paso3({ form, propiedades, monto, notas, setMonto, setNotas, onSubmit, 
             {p.mesesSel.sort((a,b)=>a.anio===b.anio?a.mes-b.mes:a.anio-b.anio).map(m=>(
               <div key={m.key} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0"}}>
                 <span>{m.label}</span>
-                <span style={{fontWeight:600}}>$400</span>
+                <span style={{fontWeight:600}}>${MONTO}</span>
               </div>
             ))}
             {!p.imageBase64&&<div style={{fontSize:11,color:"var(--red)",marginTop:4}}>⚠️ Sin comprobante adjunto</div>}
@@ -432,7 +433,7 @@ function Paso3({ form, propiedades, monto, notas, setMonto, setNotas, onSubmit, 
         ))}
         {totalEnvios>1&&monto&&(
           <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:14,borderTop:"0.5px solid var(--border)",paddingTop:8,marginTop:4,color:"var(--blue)"}}>
-            <span>Total</span><span>${(400*totalEnvios).toLocaleString()} MXN</span>
+            <span>Total</span><span>${(MONTO*totalEnvios).toLocaleString()} MXN</span>
           </div>
         )}
       </div>
@@ -694,8 +695,8 @@ export default function App() {
                    onNext={handleNext} onBack={()=>{setError("");setPasoActual(1);}} error={error}/>
           )}
           {pasoActual===3&&(
-            <Paso3 form={form} propiedades={propsValidas} monto={monto} notas={notas}
-                   setMonto={setMonto} setNotas={setNotas}
+            <Paso3 form={form} propiedades={propsValidas} notas={notas}
+                   setNotas={setNotas}
                    onSubmit={handleSubmit} onBack={()=>{setError("");setPasoActual(2);}}
                    loading={loading} error={error}/>
           )}
