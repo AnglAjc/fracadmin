@@ -42,6 +42,14 @@ function calcPendientes(rd) {
   return list;
 }
 
+function calcPagados(rd) {
+  if (!rd) return new Set();
+  const p26 = rd.pagos26||{};
+  const pagados = new Set();
+  for (let m=0;m<12;m++) if(typeof p26[m]==="number" && p26[m]>0) pagados.add(`${m+1}-2026`);
+  return pagados;
+}
+
 // ── Iconos ─────────────────────────────────────────────────────
 const Check  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>;
 const Trash  = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>;
@@ -173,9 +181,10 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
     : [];
   const esCritico = pendientes.length > 3;
   const pendientesMostrar = esCritico ? pendientes.slice(0, 3) : pendientes;
-  // Siempre mostrar los 12 meses de 2026 + pendientes de 2025
+  // Siempre mostrar los 12 meses de 2026 + pendientes de 2025, excluyendo los ya pagados
   // En crítico: solo los 3 primeros pendientes se marcan en rojo
-  const mesesHabilitados = [...pendientes, ...opciones2026.filter(op => !pendientes.find(p => p.key === op.key))];
+  const pagados = prop.residentData && !prop.residentData.manual ? calcPagados(prop.residentData) : new Set();
+  const mesesHabilitados = [...pendientes, ...opciones2026.filter(op => !pendientes.find(p => p.key === op.key) && !pagados.has(op.key))];
 
   const inp = {width:"100%",padding:"9px 11px",borderRadius:9,border:"0.5px solid var(--border2)",fontSize:13,background:"var(--surface)",color:"var(--text)",outline:"none",fontFamily:"inherit",boxSizing:"border-box"};
 
