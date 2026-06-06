@@ -424,7 +424,7 @@ function Paso3({ form, propiedades, monto, notas, setMonto, setNotas, onSubmit, 
             {p.mesesSel.sort((a,b)=>a.anio===b.anio?a.mes-b.mes:a.anio-b.anio).map(m=>(
               <div key={m.key} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0"}}>
                 <span>{m.label}</span>
-                <span style={{fontWeight:600}}>${Number(monto||0).toLocaleString()}</span>
+                <span style={{fontWeight:600}}>$400</span>
               </div>
             ))}
             {!p.imageBase64&&<div style={{fontSize:11,color:"var(--red)",marginTop:4}}>⚠️ Sin comprobante adjunto</div>}
@@ -432,16 +432,16 @@ function Paso3({ form, propiedades, monto, notas, setMonto, setNotas, onSubmit, 
         ))}
         {totalEnvios>1&&monto&&(
           <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:14,borderTop:"0.5px solid var(--border)",paddingTop:8,marginTop:4,color:"var(--blue)"}}>
-            <span>Total</span><span>${(Number(monto)*totalEnvios).toLocaleString()} MXN</span>
+            <span>Total</span><span>${(400*totalEnvios).toLocaleString()} MXN</span>
           </div>
         )}
       </div>
 
       <div style={{marginBottom:14}}>
-        <label style={{display:"block",fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:7}}>💰 Monto pagado por mes (MXN) *</label>
-        <div style={{position:"relative"}}>
-          <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--text3)",fontSize:15,fontWeight:500}}>$</span>
-          <input style={{...inp,paddingLeft:26}} type="number" min="1" step="1" value={monto} onChange={e=>setMonto(e.target.value)} placeholder="400" autoFocus/>
+        <label style={{display:"block",fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:7}}>💰 Monto por mes (MXN)</label>
+        <div style={{padding:"11px 13px",borderRadius:10,border:"0.5px solid var(--border2)",fontSize:15,fontWeight:700,color:"var(--blue-text)",background:"var(--blue-bg)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span>Cuota mensual fija</span>
+          <span>$400 MXN</span>
         </div>
       </div>
 
@@ -555,7 +555,7 @@ export default function App() {
   };
 
   const validarPaso3 = () => {
-    if(!monto||Number(monto)<=0) return setError("Indica el monto pagado por mes"), false;
+    // monto fijo $400, no requiere validación
     setError(""); return true;
   };
 
@@ -630,13 +630,13 @@ export default function App() {
               <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:4}}>📍 {prop.calle} · L{prop.lote}</div>
               {prop.mesesSel.sort((a,b)=>a.anio===b.anio?a.mes-b.mes:a.anio-b.anio).map(m=>(
                 <div key={m.key} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0 2px 10px"}}>
-                  <span>{m.label}</span><span style={{fontWeight:600}}>${Number(monto).toLocaleString()}</span>
+                  <span>{m.label}</span><span style={{fontWeight:600}}>$400</span>
                 </div>
               ))}
             </div>
           ))}
           <div style={{borderTop:"0.5px solid var(--border)",marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:13,color:"var(--blue)"}}>
-            <span>Total</span><span>${(Number(monto)*propsValidas.reduce((s,p)=>s+p.mesesSel.length,0)).toLocaleString()} MXN</span>
+            <span>Total</span><span>${(400*propsValidas.reduce((s,p)=>s+p.mesesSel.length,0)).toLocaleString()} MXN</span>
           </div>
         </div>
         <button onClick={reset} style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:"var(--blue)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
