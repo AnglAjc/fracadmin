@@ -257,61 +257,43 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
           </div>
         )}
 
-        {/* ── Bloque de meses según nivel de deuda ── */}
+        {/* ── Bloque de meses ── */}
         {prop.residentData && !prop.residentData.manual && (
           <>
-            {esCritico ? (
-              /* SITUACIÓN CRÍTICA: más de 3 meses de deuda */
-              <>
-                <div style={{background:"#fff0f0",border:"1.5px solid var(--red)",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
-                  <div style={{fontSize:13,fontWeight:700,color:"var(--red)",marginBottom:6}}>🚨 Situación crítica — Contactar al administrador</div>
-                  <div style={{fontSize:12,color:"var(--red)",lineHeight:1.6}}>
-                    Contacta al administrador para conocer el detalle completo de tu adeudo y regularizar tu situación.
-                  </div>
+            {esCritico && (
+              <div style={{background:"#fff0f0",border:"1.5px solid var(--red)",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+                <div style={{fontSize:13,fontWeight:700,color:"var(--red)",marginBottom:4}}>🚨 Situación crítica — Contactar al administrador</div>
+                <div style={{fontSize:12,color:"var(--red)",lineHeight:1.6}}>
+                  Contacta al administrador para conocer el detalle completo de tu adeudo y regularizar tu situación.
                 </div>
-                <div style={{marginBottom:14}}>
-                  <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:8}}>📅 Selecciona los meses a pagar</div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                    {pendientesMostrar.map(op=>{
-                      const sel=!!prop.mesesSel.find(m=>m.key===op.key);
-                      return (
-                        <button key={op.key} type="button" onClick={()=>toggleMes(propActiva,op)}
-                                style={{padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:sel?700:500,cursor:"pointer",display:"flex",alignItems:"center",gap:5,border:`1.5px solid ${sel?"var(--blue)":"var(--red)"}`,background:sel?"var(--blue-bg)":"var(--red-bg)",color:sel?"var(--blue-text)":"var(--red)",fontFamily:"inherit",transition:"all 0.1s"}}>
-                          {sel&&<Check/>}{op.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </>
-            ) : (
-              /* NORMAL: 0-3 meses de deuda */
-              <>
-                {pendientes.length > 0 && (
-                  <div style={{background:"var(--red-bg)",borderRadius:8,padding:"10px 12px",marginBottom:12}}>
-                    <div style={{fontSize:11,fontWeight:700,color:"var(--red)",marginBottom:6}}>⚠️ Meses con adeudo detectados:</div>
-                    <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
-                      {pendientes.map(m=><span key={m.key} style={{fontSize:11,background:"#fff",color:"var(--red)",padding:"2px 8px",borderRadius:5,fontWeight:600}}>{m.label} · ${m.cuota}</span>)}
-                    </div>
-                  </div>
-                )}
-                <div style={{marginBottom:14}}>
-                  <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:8}}>📅 Meses a pagar *</div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                    {mesesHabilitados.map(op=>{
-                      const sel=!!prop.mesesSel.find(m=>m.key===op.key);
-                      const isPend=!!pendientes.find(p=>p.key===op.key);
-                      return (
-                        <button key={op.key} type="button" onClick={()=>toggleMes(propActiva,op)}
-                                style={{padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:sel?700:500,cursor:"pointer",display:"flex",alignItems:"center",gap:5,border:`1.5px solid ${sel?"var(--blue)":isPend?"var(--red)":"var(--border2)"}`,background:sel?"var(--blue-bg)":isPend?"var(--red-bg)":"var(--surface)",color:sel?"var(--blue-text)":isPend?"var(--red)":"var(--text2)",fontFamily:"inherit",transition:"all 0.1s"}}>
-                          {sel&&<Check/>}{op.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </>
+              </div>
             )}
+            {!esCritico && pendientes.length > 0 && (
+              <div style={{background:"var(--red-bg)",borderRadius:8,padding:"10px 12px",marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:700,color:"var(--red)",marginBottom:6}}>⚠️ Meses con adeudo detectados:</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                  {pendientes.map(m=><span key={m.key} style={{fontSize:11,background:"#fff",color:"var(--red)",padding:"2px 8px",borderRadius:5,fontWeight:600}}>{m.label} · ${m.cuota}</span>)}
+                </div>
+              </div>
+            )}
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:8}}>📅 Meses a pagar *</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {mesesHabilitados.map(op=>{
+                  const sel=!!prop.mesesSel.find(m=>m.key===op.key);
+                  // En crítico: solo los 3 primeros pendientes se marcan rojo; el resto normal
+                  const isPend = esCritico
+                    ? !!pendientesMostrar.find(p=>p.key===op.key)
+                    : !!pendientes.find(p=>p.key===op.key);
+                  return (
+                    <button key={op.key} type="button" onClick={()=>toggleMes(propActiva,op)}
+                            style={{padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:sel?700:500,cursor:"pointer",display:"flex",alignItems:"center",gap:5,border:`1.5px solid ${sel?"var(--blue)":isPend?"var(--red)":"var(--border2)"}`,background:sel?"var(--blue-bg)":isPend?"var(--red-bg)":"var(--surface)",color:sel?"var(--blue-text)":isPend?"var(--red)":"var(--text2)",fontFamily:"inherit",transition:"all 0.1s"}}>
+                      {sel&&<Check/>}{op.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </>
         )}
 

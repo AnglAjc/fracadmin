@@ -40,23 +40,18 @@ function PayGrid({ r, onRefresh }) {
   const [monto, setMonto]     = useState("400");
   const [metodo, setMetodo]   = useState("efectivo");
   const [saving, setSaving]   = useState(false);
-  const now    = new Date();
-  const maxM26 = now.getFullYear() >= 2026 ? now.getMonth() : 0;
-
   useEffect(() => { setData(r); }, [r]);
 
   const p25 = data.pagos25 || {};
   const p26 = data.pagos26 || {};
 
-  const cls = (v, y, m) => {
-    if (y === 2026 && m >= maxM26) return "empty";
+  const cls = (v) => {
     if (v === "vacio") return "empty";
     if (v === "pendiente" || v === null || v === undefined) return "pending";
     if (typeof v === "number" && v > 0) return "paid";
     return "empty";
   };
-  const txt = (v, y, m) => {
-    if (y === 2026 && m >= maxM26) return "—";
+  const txt = (v) => {
     if (v === "vacio") return "—";
     if (v === "pendiente" || v === null || v === undefined) return "✗";
     if (typeof v === "number" && v > 0) return "✓";
@@ -64,7 +59,6 @@ function PayGrid({ r, onRefresh }) {
   };
 
   const handleCellClick = (anio, mes) => {
-    if (anio === 2026 && mes >= maxM26) return;
     const p   = anio === 2025 ? p25 : p26;
     const val = p[mes];
     if (val === "vacio") return;
@@ -95,16 +89,15 @@ function PayGrid({ r, onRefresh }) {
   };
 
   const Cell = ({ val, anio, mes }) => {
-    const isFuture = anio === 2026 && mes >= maxM26;
     const isVacio  = val === "vacio";
-    const c = cls(val, anio, mes);
+    const c = cls(val);
     const isPaid = typeof val === "number" && val > 0;
     return (
       <td className={c}
-          style={{ cursor: (isFuture || isVacio) ? "default" : "pointer" }}
-          title={isFuture || isVacio ? "" : isPaid ? "Clic para deshacer pago" : "Clic para registrar pago"}
-          onClick={() => !isFuture && !isVacio && handleCellClick(anio, mes)}>
-        {txt(val, anio, mes)}
+          style={{ cursor: isVacio ? "default" : "pointer" }}
+          title={isVacio ? "" : isPaid ? "Clic para deshacer pago" : "Clic para registrar pago"}
+          onClick={() => !isVacio && handleCellClick(anio, mes)}>
+        {txt(val)}
       </td>
     );
   };
