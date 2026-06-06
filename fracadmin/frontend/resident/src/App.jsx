@@ -173,12 +173,9 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
     : [];
   const esCritico = pendientes.length > 3;
   const pendientesMostrar = esCritico ? pendientes.slice(0, 3) : pendientes;
-  // Meses habilitados para seleccionar:
-  // - Si crítico: solo los 3 primeros meses de deuda
-  // - Si no crítico: meses pendientes + cualquier mes 2026
-  const mesesHabilitados = esCritico
-    ? pendientesMostrar
-    : [...pendientes, ...opciones2026.filter(op => !pendientes.find(p => p.key === op.key))];
+  // Siempre mostrar los 12 meses de 2026 + pendientes de 2025
+  // En crítico: solo los 3 primeros pendientes se marcan en rojo
+  const mesesHabilitados = [...pendientes, ...opciones2026.filter(op => !pendientes.find(p => p.key === op.key))];
 
   const inp = {width:"100%",padding:"9px 11px",borderRadius:9,border:"0.5px solid var(--border2)",fontSize:13,background:"var(--surface)",color:"var(--text)",outline:"none",fontFamily:"inherit",boxSizing:"border-box"};
 
