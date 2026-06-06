@@ -128,7 +128,7 @@ function Paso1({ form, setF, searchResults, searching, onSelectResident, onNext,
 
       <div style={{ marginBottom:0 }}>
         <label style={{ display:"block",fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:7 }}>📱 Número de WhatsApp *</label>
-        <input style={inp} type="tel" value={form.telefono} onChange={e=>{telefonoAutoRef.current="";setF("telefono",e.target.value);}} placeholder="55 1234 5678"/>
+        <input style={inp} type="tel" value={form.telefono} onChange={e=>setF("telefono",e.target.value)} placeholder="55 1234 5678"/>
         <div style={{ fontSize:11,color:"var(--text3)",marginTop:5 }}>Recibirás la confirmación de tu pago aquí</div>
       </div>
 
@@ -513,11 +513,9 @@ export default function App() {
       const rd = full || r;
 
       if(rd.telefono) {
-        // Sobreescribir si: campo vacío, o el valor actual es el que autorellenamos antes (no lo escribió el usuario)
-        if(!form.telefono || form.telefono === telefonoAutoRef.current) {
-          setF("telefono", rd.telefono);
-          telefonoAutoRef.current = rd.telefono;
-        }
+        // Sobreescribir si: campo vacío, o el valor actual fue autorellenado (no escrito por el usuario)
+        setF("telefono", rd.telefono);
+        telefonoAutoRef.current = rd.telefono;
       }
 
       try {
@@ -682,7 +680,10 @@ export default function App() {
       <div style={{width:"100%",maxWidth:500}}>
         <div style={{background:"var(--surface)",border:"0.5px solid var(--border)",borderRadius:16,padding:"20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
           {pasoActual===1&&(
-            <Paso1 form={form} setF={(k,v)=>{if(k==="nombre")handleNombreChange(v);else setF(k,v);}}
+            <Paso1 form={form} setF={(k,v)=>{
+                     if(k==="nombre") handleNombreChange(v);
+                     else { if(k==="telefono") telefonoAutoRef.current=""; setF(k,v); }
+                   }}
                    searchResults={searchResults} searching={searching}
                    onSelectResident={onSelectResident} onNext={handleNext} error={error}/>
           )}
