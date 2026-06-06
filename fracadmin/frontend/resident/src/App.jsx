@@ -6,12 +6,10 @@ const CALLES = ["AMADA","BALVINA","MARBELLA","MANUELA","VIRGINIA"];
 const MESES_FULL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                     "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-// Solo meses del año en curso (2026)
+// Todos los meses de 2026 (permite adelantar pagos)
 function getMeses2026() {
-  const now = new Date();
-  const maxM = now.getFullYear() >= 2026 ? now.getMonth() + 2 : 1;
   const opciones = [];
-  for (let m = 1; m <= Math.min(maxM, 12); m++) {
+  for (let m = 1; m <= 12; m++) {
     opciones.push({ label:`${MESES_FULL[m-1]} 2026`, mes:m, anio:2026, key:`${m}-2026`, cuota:400 });
   }
   return opciones.reverse();
@@ -267,18 +265,8 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
               <>
                 <div style={{background:"#fff0f0",border:"1.5px solid var(--red)",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
                   <div style={{fontSize:13,fontWeight:700,color:"var(--red)",marginBottom:6}}>🚨 Situación crítica — Contactar al administrador</div>
-                  <div style={{fontSize:12,color:"var(--red)",lineHeight:1.6,marginBottom:10}}>
-                    Tu cuenta tiene <strong>{pendientes.length} meses</strong> de adeudo. Solo puedes registrar los 3 primeros meses pendientes. Para regularizar tu situación completa comunícate con la administración.
-                  </div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
-                    {pendientesMostrar.map(m=>(
-                      <span key={m.key} style={{fontSize:11,background:"#fff",color:"var(--red)",padding:"3px 9px",borderRadius:5,fontWeight:600,border:"1px solid var(--red)"}}>
-                        {m.label} · ${m.cuota}
-                      </span>
-                    ))}
-                  </div>
-                  <div style={{fontSize:11,color:"var(--text3)"}}>
-                    Meses restantes ({pendientes.length - 3} adicionales) bloqueados hasta regularizar.
+                  <div style={{fontSize:12,color:"var(--red)",lineHeight:1.6}}>
+                    Contacta al administrador para conocer el detalle completo de tu adeudo y regularizar tu situación.
                   </div>
                 </div>
                 <div style={{marginBottom:14}}>
