@@ -206,9 +206,12 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
   // Siempre mostrar los 12 meses de 2026 + pendientes de 2025, excluyendo los ya pagados
   // En crítico: solo los 3 primeros pendientes se marcan en rojo
   const pagados = prop.residentData && !prop.residentData.manual ? calcPagados(prop.residentData) : new Set();
-  // Solo mostrar meses de 2026 (año en curso), excluyendo los ya pagados
+  // Mostrar meses de 2026 excluyendo los ya pagados
+  // pendientes2026: meses con adeudo de 2026 (van primero, en rojo)
+  // resto: meses de 2026 sin adeudo y sin pagar (para adelantar)
   const pendientes2026 = pendientes.filter(p => p.anio === 2026);
-  const mesesHabilitados = [...pendientes2026, ...opciones2026.filter(op => !pendientes.find(p => p.key === op.key) && !pagados.has(op.key))];
+  const resto2026 = opciones2026.filter(op => !pendientes.find(p => p.key === op.key) && !pagados.has(op.key));
+  const mesesHabilitados = [...pendientes2026, ...resto2026];
 
   const inp = {width:"100%",padding:"9px 11px",borderRadius:9,border:"0.5px solid var(--border2)",fontSize:13,background:"var(--surface)",color:"var(--text)",outline:"none",fontFamily:"inherit",boxSizing:"border-box"};
 
@@ -236,6 +239,11 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
               <span style={{color:"var(--green)"}}><Check/> {prop.residentData.residente?.split("/")[0].trim()}</span>
             ) : `Propiedad ${propActiva+1}`}
           </div>
+          {prop.residentData && !prop.residentData.manual && (
+            <div style={{fontSize:12,color:"var(--text3)",marginTop:-8,marginBottom:4}}>
+              📍 {prop.residentData.calle} · Casa {prop.residentData.lote} · Mza {prop.residentData.mza}
+            </div>
+          )}
           {propiedades.length>1 && (
             <button type="button" onClick={()=>removeProp(propActiva)}
                     style={{background:"var(--red-bg)",border:"none",color:"var(--red)",borderRadius:7,cursor:"pointer",padding:"4px 8px",display:"flex",alignItems:"center",gap:4,fontSize:11,fontFamily:"inherit"}}>
@@ -308,6 +316,15 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
             )}
             <div style={{marginBottom:14}}>
               <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:8}}>📅 Meses a pagar *</div>
+              {mesesHabilitados.length === 0 ? (
+                <div style={{background:"var(--green-bg)",border:"1px solid var(--green-border)",borderRadius:9,padding:"12px 14px",display:"flex",gap:8,alignItems:"center"}}>
+                  <span style={{fontSize:20}}>✅</span>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:"var(--green)"}}>¡Estás al corriente!</div>
+                    <div style={{fontSize:12,color:"var(--green)",marginTop:2}}>Todos tus meses de 2026 ya están pagados. No tienes ningún mes pendiente.</div>
+                  </div>
+                </div>
+              ) : (
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                 {mesesHabilitados.map(op=>{
                   const sel=!!prop.mesesSel.find(m=>m.key===op.key);
@@ -323,6 +340,7 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
                   );
                 })}
               </div>
+              )}
             </div>
           </>
         )}
@@ -581,7 +599,7 @@ export default function App() {
             mza:             (prop.mza||"").trim(),
             mes:             op.mes,
             anio:            op.anio,
-            monto:           Number(monto),
+            monto:           400,
             comprobante_b64: prop.imageBase64||null,
             notas:           notas.trim()||null,
           })
