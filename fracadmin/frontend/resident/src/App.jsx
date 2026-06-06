@@ -66,7 +66,6 @@ function Paso1({ form, setF, searchResults, searching, onSelectResident, onNext,
 
   return (
     <div>
-      {/* Datos bancarios - copiar dato por dato */}
       <div style={{ background:"var(--blue-bg)",border:"1px solid var(--blue)",borderRadius:12,padding:"14px 16px",marginBottom:18 }}>
         <div style={{ fontSize:12,fontWeight:700,color:"var(--blue-text)",marginBottom:10 }}>🏦 Datos para transferencia bancaria</div>
         {BANCO_DATOS.map((d,i) => (
@@ -122,12 +121,11 @@ function Paso1({ form, setF, searchResults, searching, onSelectResident, onNext,
 
 // ── Paso 2: Propiedades con meses por propiedad ────────────────
 function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, onBack, error }) {
-  const opciones = getMeses2026();
+  const opciones2026 = getMeses2026();
   const [propActiva, setPropActiva] = useState(0);
   const fileRefs = useRef({});
 
   const addProp = () => {
-    // Si hay opciones del residente aún no asignadas, preseleccionar la siguiente
     const propIds = propiedades.map(p=>p.resident_id).filter(Boolean);
     const siguiente = residenteOpciones.find(rd => !propIds.includes(rd.id));
     const nuevaProp = emptyProp();
@@ -164,7 +162,6 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
     setPropiedades(prev=>prev.map((p,i)=>i===idx?{...p,imageBase64:b64,imagePreview:URL.createObjectURL(file)}:p));
   };
 
-  // Selección rápida de propiedad del residente
   const selectResidentProp = (idx, rd) => {
     setPropiedades(prev=>prev.map((p,i)=>i===idx?{...p,calle:rd.calle,lote:rd.lote,mza:rd.mza||"",resident_id:rd.id,residentData:rd}:p));
   };
@@ -172,13 +169,25 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
   const prop = propiedades[propActiva] || propiedades[0];
   if (!prop) return null;
 
+  // ── Lógica de meses permitidos según deuda ─────────────────
+  const pendientes = prop.residentData && !prop.residentData.manual
+    ? calcPendientes(prop.residentData)
+    : [];
+  const esCritico = pendientes.length > 3;
+  const pendientesMostrar = esCritico ? pendientes.slice(0, 3) : pendientes;
+  // Meses habilitados para seleccionar:
+  // - Si crítico: solo los 3 primeros meses de deuda
+  // - Si no crítico: meses pendientes + cualquier mes 2026
+  const mesesHabilitados = esCritico
+    ? pendientesMostrar
+    : [...pendientes, ...opciones2026.filter(op => !pendientes.find(p => p.key === op.key))];
+
   const inp = {width:"100%",padding:"9px 11px",borderRadius:9,border:"0.5px solid var(--border2)",fontSize:13,background:"var(--surface)",color:"var(--text)",outline:"none",fontFamily:"inherit",boxSizing:"border-box"};
 
   return (
     <div>
       {error && <div style={{background:"var(--red-bg)",color:"var(--red)",borderRadius:9,padding:"10px 13px",fontSize:13,marginBottom:14,display:"flex",gap:8}}><span>⚠️</span>{error}</div>}
 
-      {/* Tabs de propiedades */}
       {propiedades.length > 1 && (
         <div style={{ display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:4 }}>
           {propiedades.map((p,i) => (
@@ -192,12 +201,11 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
         </div>
       )}
 
-      {/* Propiedad activa */}
       <div style={{ background:"var(--surface2)",borderRadius:13,padding:"14px",marginBottom:14,border:`1px solid ${prop.residentData?"var(--green-border)":"var(--border)"}` }}>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12 }}>
           <div style={{ fontSize:13,fontWeight:700,color:"var(--text2)" }}>
             🏠 {prop.residentData ? (
-              <span style={{color:"var(--green)"}}><Check/> {prop.residentData.residente.split("/")[0].trim()}</span>
+              <span style={{color:"var(--green)"}}><Check/> {prop.residentData.residente?.split("/")[0].trim()}</span>
             ) : `Propiedad ${propActiva+1}`}
           </div>
           {propiedades.length>1 && (
@@ -208,7 +216,6 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
           )}
         </div>
 
-        {/* Si hay propiedades del residente encontrado, mostrar selector rápido */}
         {residenteOpciones.length > 0 && !prop.residentData && (
           <div style={{ marginBottom:12 }}>
             <div style={{ fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:7 }}>Selecciona tu propiedad</div>
@@ -229,7 +236,6 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
           </div>
         )}
 
-        {/* Campos manuales si no autocompletó o eligió "otro" */}
         {(!prop.residentData || prop.residentData?.manual) && (
           <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12 }}>
             <div>
@@ -253,45 +259,103 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
           </div>
         )}
 
-        {/* Meses pendientes info */}
-        {prop.residentData && !prop.residentData.manual && (()=>{
-          const pend = calcPendientes(prop.residentData);
-          return pend.length > 0 ? (
-            <div style={{background:"var(--red-bg)",borderRadius:8,padding:"10px 12px",marginBottom:12}}>
-              <div style={{fontSize:11,fontWeight:700,color:"var(--red)",marginBottom:6}}>⚠️ Meses con adeudo detectados:</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
-                {pend.map(m=><span key={m.key} style={{fontSize:11,background:"#fff",color:"var(--red)",padding:"2px 8px",borderRadius:5,fontWeight:600}}>{m.label} · ${m.cuota}</span>)}
-              </div>
-            </div>
-          ) : null;
-        })()}
+        {/* ── Bloque de meses según nivel de deuda ── */}
+        {prop.residentData && !prop.residentData.manual && (
+          <>
+            {esCritico ? (
+              /* SITUACIÓN CRÍTICA: más de 3 meses de deuda */
+              <>
+                <div style={{background:"#fff0f0",border:"1.5px solid var(--red)",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"var(--red)",marginBottom:6}}>🚨 Situación crítica — Contactar al administrador</div>
+                  <div style={{fontSize:12,color:"var(--red)",lineHeight:1.6,marginBottom:10}}>
+                    Tu cuenta tiene <strong>{pendientes.length} meses</strong> de adeudo. Solo puedes registrar los 3 primeros meses pendientes. Para regularizar tu situación completa comunícate con la administración.
+                  </div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>
+                    {pendientesMostrar.map(m=>(
+                      <span key={m.key} style={{fontSize:11,background:"#fff",color:"var(--red)",padding:"3px 9px",borderRadius:5,fontWeight:600,border:"1px solid var(--red)"}}>
+                        {m.label} · ${m.cuota}
+                      </span>
+                    ))}
+                  </div>
+                  <div style={{fontSize:11,color:"var(--text3)"}}>
+                    Meses restantes ({pendientes.length - 3} adicionales) bloqueados hasta regularizar.
+                  </div>
+                </div>
+                <div style={{marginBottom:14}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:8}}>📅 Selecciona los meses a pagar</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    {pendientesMostrar.map(op=>{
+                      const sel=!!prop.mesesSel.find(m=>m.key===op.key);
+                      return (
+                        <button key={op.key} type="button" onClick={()=>toggleMes(propActiva,op)}
+                                style={{padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:sel?700:500,cursor:"pointer",display:"flex",alignItems:"center",gap:5,border:`1.5px solid ${sel?"var(--blue)":"var(--red)"}`,background:sel?"var(--blue-bg)":"var(--red-bg)",color:sel?"var(--blue-text)":"var(--red)",fontFamily:"inherit",transition:"all 0.1s"}}>
+                          {sel&&<Check/>}{op.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* NORMAL: 0-3 meses de deuda */
+              <>
+                {pendientes.length > 0 && (
+                  <div style={{background:"var(--red-bg)",borderRadius:8,padding:"10px 12px",marginBottom:12}}>
+                    <div style={{fontSize:11,fontWeight:700,color:"var(--red)",marginBottom:6}}>⚠️ Meses con adeudo detectados:</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                      {pendientes.map(m=><span key={m.key} style={{fontSize:11,background:"#fff",color:"var(--red)",padding:"2px 8px",borderRadius:5,fontWeight:600}}>{m.label} · ${m.cuota}</span>)}
+                    </div>
+                  </div>
+                )}
+                <div style={{marginBottom:14}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:8}}>📅 Meses a pagar *</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    {mesesHabilitados.map(op=>{
+                      const sel=!!prop.mesesSel.find(m=>m.key===op.key);
+                      const isPend=!!pendientes.find(p=>p.key===op.key);
+                      return (
+                        <button key={op.key} type="button" onClick={()=>toggleMes(propActiva,op)}
+                                style={{padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:sel?700:500,cursor:"pointer",display:"flex",alignItems:"center",gap:5,border:`1.5px solid ${sel?"var(--blue)":isPend?"var(--red)":"var(--border2)"}`,background:sel?"var(--blue-bg)":isPend?"var(--red-bg)":"var(--surface)",color:sel?"var(--blue-text)":isPend?"var(--red)":"var(--text2)",fontFamily:"inherit",transition:"all 0.1s"}}>
+                          {sel&&<Check/>}{op.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+          </>
+        )}
 
-        {/* Selector de meses de 2026 */}
-        <div style={{marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:8}}>📅 Meses a pagar (2026) *</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-            {opciones.map(op=>{
-              const sel=!!prop.mesesSel.find(m=>m.key===op.key);
-              const isPend=prop.residentData&&!prop.residentData.manual&&calcPendientes(prop.residentData).find(p=>p.key===op.key);
-              return (
-                <button key={op.key} type="button" onClick={()=>toggleMes(propActiva,op)}
-                        style={{padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:sel?700:500,cursor:"pointer",display:"flex",alignItems:"center",gap:5,border:`1.5px solid ${sel?"var(--blue)":isPend?"var(--red)":"var(--border2)"}`,background:sel?"var(--blue-bg)":isPend?"var(--red-bg)":"var(--surface)",color:sel?"var(--blue-text)":isPend?"var(--red)":"var(--text2)",fontFamily:"inherit",transition:"all 0.1s"}}>
-                  {sel&&<Check/>}{op.label}
-                </button>
-              );
-            })}
-          </div>
-          {prop.mesesSel.length>0&&(
-            <div style={{marginTop:8,display:"flex",flexWrap:"wrap",gap:4}}>
-              {prop.mesesSel.sort((a,b)=>a.mes-b.mes).map(m=>(
-                <span key={m.key} style={{fontSize:11,background:"var(--blue-bg)",color:"var(--blue-text)",padding:"3px 9px",borderRadius:6,display:"inline-flex",alignItems:"center",gap:4,fontWeight:600}}>
-                  {m.label}
-                  <button type="button" onClick={()=>toggleMes(propActiva,m)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--blue)",fontSize:12,lineHeight:1,padding:0}}>✕</button>
-                </span>
-              ))}
+        {/* Selector de meses 2026 para propiedades manuales (sin residentData) */}
+        {(!prop.residentData || prop.residentData?.manual) && (
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:8}}>📅 Meses a pagar (2026) *</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {opciones2026.map(op=>{
+                const sel=!!prop.mesesSel.find(m=>m.key===op.key);
+                return (
+                  <button key={op.key} type="button" onClick={()=>toggleMes(propActiva,op)}
+                          style={{padding:"7px 12px",borderRadius:8,fontSize:12,fontWeight:sel?700:500,cursor:"pointer",display:"flex",alignItems:"center",gap:5,border:`1.5px solid ${sel?"var(--blue)":"var(--border2)"}`,background:sel?"var(--blue-bg)":"var(--surface)",color:sel?"var(--blue-text)":"var(--text2)",fontFamily:"inherit",transition:"all 0.1s"}}>
+                    {sel&&<Check/>}{op.label}
+                  </button>
+                );
+              })}
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Meses seleccionados chips */}
+        {prop.mesesSel.length>0&&(
+          <div style={{marginBottom:14,display:"flex",flexWrap:"wrap",gap:4}}>
+            {prop.mesesSel.sort((a,b)=>a.anio===b.anio?a.mes-b.mes:a.anio-b.anio).map(m=>(
+              <span key={m.key} style={{fontSize:11,background:"var(--blue-bg)",color:"var(--blue-text)",padding:"3px 9px",borderRadius:6,display:"inline-flex",alignItems:"center",gap:4,fontWeight:600}}>
+                {m.label}
+                <button type="button" onClick={()=>toggleMes(propActiva,m)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--blue)",fontSize:12,lineHeight:1,padding:0}}>✕</button>
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Comprobante OBLIGATORIO */}
         <div>
@@ -301,7 +365,7 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
           </div>
           {!prop.imagePreview ? (
             <div onClick={()=>fileRefs.current[propActiva]?.click()}
-                 style={{border:`1.5px dashed ${true?"var(--border2)":"var(--red)"}`,borderRadius:10,padding:"18px",textAlign:"center",cursor:"pointer",background:"var(--surface2)",transition:"all 0.15s"}}
+                 style={{border:"1.5px dashed var(--border2)",borderRadius:10,padding:"18px",textAlign:"center",cursor:"pointer",background:"var(--surface2)",transition:"all 0.15s"}}
                  onMouseOver={e=>{e.currentTarget.style.borderColor="var(--blue)";e.currentTarget.style.background="var(--blue-bg)";}}
                  onMouseOut={e=>{e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.background="var(--surface2)";}}
                  onDrop={e=>{e.preventDefault();handleImage(propActiva,e.dataTransfer.files[0]);}}
@@ -326,7 +390,6 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
         </div>
       </div>
 
-      {/* Botón agregar propiedad */}
       <button type="button" onClick={addProp}
               style={{width:"100%",padding:"10px",borderRadius:10,border:"1.5px dashed var(--border2)",background:"transparent",color:"var(--blue)",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginBottom:16}}
               onMouseOver={e=>{e.currentTarget.style.borderColor="var(--blue)";e.currentTarget.style.background="var(--blue-bg)";}}
@@ -352,14 +415,13 @@ function Paso3({ form, propiedades, monto, notas, setMonto, setNotas, onSubmit, 
     <div>
       {error && <div style={{background:"var(--red-bg)",color:"var(--red)",borderRadius:9,padding:"10px 13px",fontSize:13,marginBottom:14,display:"flex",gap:8}}><span>⚠️</span>{error}</div>}
 
-      {/* Resumen */}
       <div style={{background:"var(--surface2)",borderRadius:13,padding:"14px",marginBottom:16}}>
         <div style={{fontSize:13,fontWeight:700,color:"var(--text2)",marginBottom:10}}>📋 Resumen de tu pago</div>
         <div style={{fontSize:13,marginBottom:6}}><strong>{form.nombre}</strong> · {form.telefono}</div>
         {propsValidas.map((p,i)=>(
           <div key={p.id} style={{background:"var(--surface)",borderRadius:9,padding:"10px 12px",marginBottom:8,border:"0.5px solid var(--border)"}}>
             <div style={{fontWeight:600,fontSize:12,color:"var(--text2)",marginBottom:5}}>🏠 {p.calle} · L{p.lote}{p.mza?` Mza ${p.mza}`:""}</div>
-            {p.mesesSel.sort((a,b)=>a.mes-b.mes).map(m=>(
+            {p.mesesSel.sort((a,b)=>a.anio===b.anio?a.mes-b.mes:a.anio-b.anio).map(m=>(
               <div key={m.key} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0"}}>
                 <span>{m.label}</span>
                 <span style={{fontWeight:600}}>${Number(monto||0).toLocaleString()}</span>
@@ -375,7 +437,6 @@ function Paso3({ form, propiedades, monto, notas, setMonto, setNotas, onSubmit, 
         )}
       </div>
 
-      {/* Monto */}
       <div style={{marginBottom:14}}>
         <label style={{display:"block",fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:7}}>💰 Monto pagado por mes (MXN) *</label>
         <div style={{position:"relative"}}>
@@ -384,7 +445,6 @@ function Paso3({ form, propiedades, monto, notas, setMonto, setNotas, onSubmit, 
         </div>
       </div>
 
-      {/* Notas */}
       <div style={{marginBottom:20}}>
         <label style={{display:"block",fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:7}}>📝 Notas adicionales (opcional)</label>
         <textarea style={{...inp,resize:"none",height:64}} value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Ej: Pago en efectivo, referencia del banco..."/>
@@ -404,13 +464,13 @@ function Paso3({ form, propiedades, monto, notas, setMonto, setNotas, onSubmit, 
 // ── App principal ──────────────────────────────────────────────
 export default function App() {
   const draft = loadDraft();
-  const [pasoActual, setPasoActual] = useState(1); // 1, 2, 3
-  const [step, setStep]             = useState("form"); // form | success
+  const [pasoActual, setPasoActual] = useState(1);
+  const [step, setStep]             = useState("form");
   const [form, setForm]             = useState(draft?.form || { nombre:"", telefono:"" });
   const [propiedades, setPropiedades] = useState(draft?.propiedades || [emptyProp()]);
   const [monto, setMonto]           = useState(draft?.monto || "400");
   const [notas, setNotas]           = useState(draft?.notas || "");
-  const [residenteOpciones, setResidenteOpciones] = useState([]); // propiedades del residente encontrado
+  const [residenteOpciones, setResidenteOpciones] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching]   = useState(false);
   const [loading, setLoading]       = useState(false);
@@ -421,7 +481,6 @@ export default function App() {
 
   useEffect(() => { saveDraft({ form, propiedades, monto, notas }); }, [form, propiedades, monto, notas]);
 
-  // ── Búsqueda nombre ──────────────────────────────────────────
   const handleNombreChange = (v) => {
     setF("nombre",v);
     clearTimeout(searchTimer.current);
@@ -438,20 +497,16 @@ export default function App() {
     setF("nombre", r.residente.split("/")[0].trim());
 
     try {
-      // Obtener datos completos
       const params=new URLSearchParams({calle:r.calle,lote:r.lote});
       if(r.mza) params.set("mza",r.mza);
       const{data:full}=await axios.get(`${API}/api/residents/by-location?${params}`);
       const rd = full || r;
 
-      // Autofill teléfono si está en BD
       if(rd.telefono && !form.telefono) setF("telefono", rd.telefono);
 
-      // Buscar si tiene más propiedades (mismo nombre)
       try {
         const{data:todos}=await axios.get(`${API}/api/residents/search?q=${encodeURIComponent(r.residente.split("/")[0].trim())}`);
         if(todos.length>1){
-          // Cargar datos completos de cada propiedad
           const completos = await Promise.all(todos.map(async t=>{
             try{const p=new URLSearchParams({calle:t.calle,lote:t.lote});if(t.mza)p.set("mza",t.mza);const{data:d}=await axios.get(`${API}/api/residents/by-location?${p}`);return d||t;}catch{return t;}
           }));
@@ -461,14 +516,12 @@ export default function App() {
         }
       } catch {}
 
-      // Llenar la primera propiedad
       setPropiedades(prev=>prev.map((p,i)=>i===0?{...p,calle:rd.calle,lote:rd.lote,mza:rd.mza||"",resident_id:rd.id,residentData:rd}:p));
     } catch {
       setF("nombre", r.residente.split("/")[0].trim());
     }
   };
 
-  // ── Validaciones por paso ────────────────────────────────────
   const validarPaso1 = () => {
     if(!form.nombre.trim()) return setError("Escribe tu nombre completo"), false;
     if(!form.telefono.trim()) return setError("Escribe tu número de WhatsApp"), false;
@@ -536,7 +589,6 @@ export default function App() {
 
   const propsValidas = propiedades.filter(p=>p.calle&&p.lote&&p.mesesSel.length>0);
 
-  // ── Éxito ─────────────────────────────────────────────────────
   if(step==="success") return (
     <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem"}}>
       <div style={{background:"var(--surface)",border:"0.5px solid var(--border)",borderRadius:20,width:"100%",maxWidth:420,padding:"2.5rem 2rem",textAlign:"center",boxShadow:"0 4px 24px rgba(0,0,0,0.08)"}}>
@@ -556,7 +608,7 @@ export default function App() {
           {propsValidas.map(prop=>(
             <div key={prop.id} style={{marginBottom:8}}>
               <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:4}}>📍 {prop.calle} · L{prop.lote}</div>
-              {prop.mesesSel.sort((a,b)=>a.mes-b.mes).map(m=>(
+              {prop.mesesSel.sort((a,b)=>a.anio===b.anio?a.mes-b.mes:a.anio-b.anio).map(m=>(
                 <div key={m.key} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0 2px 10px"}}>
                   <span>{m.label}</span><span style={{fontWeight:600}}>${Number(monto).toLocaleString()}</span>
                 </div>
@@ -574,12 +626,9 @@ export default function App() {
     </div>
   );
 
-  // ── Indicador de pasos ─────────────────────────────────────────
   const pasos = ["Tus datos","Propiedades","Confirmar"];
   return (
     <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",flexDirection:"column",alignItems:"center",padding:"1.5rem 1rem 5rem"}}>
-
-      {/* Header */}
       <div style={{width:"100%",maxWidth:500,marginBottom:20}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
           <div style={{width:38,height:38,borderRadius:10,background:"var(--blue)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -590,7 +639,6 @@ export default function App() {
             <div style={{fontSize:11,color:"var(--text3)"}}>Registro de cuotas mensuales</div>
           </div>
         </div>
-        {/* Progress steps */}
         <div style={{display:"flex",alignItems:"center",gap:0}}>
           {pasos.map((p,i)=>(
             <div key={i} style={{display:"flex",alignItems:"center",flex:i<pasos.length-1?1:"initial"}}>
