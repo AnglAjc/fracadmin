@@ -681,8 +681,9 @@ export default function App() {
         <div style={{background:"var(--surface)",border:"0.5px solid var(--border)",borderRadius:16,padding:"20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
           {pasoActual===1&&(
             <Paso1 form={form} setF={(k,v)=>{
-                     if(k==="nombre") handleNombreChange(v);
-                     else { if(k==="telefono") telefonoAutoRef.current=""; setF(k,v); }
+                     if(k==="nombre") { handleNombreChange(v); }
+                     else if(k==="telefono") { telefonoAutoRef.current=""; setF(k,v); }
+                     else { setF(k,v); }
                    }}
                    searchResults={searchResults} searching={searching}
                    onSelectResident={onSelectResident} onNext={handleNext} error={error}/>
