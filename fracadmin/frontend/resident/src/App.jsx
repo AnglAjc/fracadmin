@@ -184,7 +184,9 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
   // Siempre mostrar los 12 meses de 2026 + pendientes de 2025, excluyendo los ya pagados
   // En crítico: solo los 3 primeros pendientes se marcan en rojo
   const pagados = prop.residentData && !prop.residentData.manual ? calcPagados(prop.residentData) : new Set();
-  const mesesHabilitados = [...pendientes, ...opciones2026.filter(op => !pendientes.find(p => p.key === op.key) && !pagados.has(op.key))];
+  // Solo mostrar meses de 2026 (año en curso), excluyendo los ya pagados
+  const pendientes2026 = pendientes.filter(p => p.anio === 2026);
+  const mesesHabilitados = [...pendientes2026, ...opciones2026.filter(op => !pendientes.find(p => p.key === op.key) && !pagados.has(op.key))];
 
   const inp = {width:"100%",padding:"9px 11px",borderRadius:9,border:"0.5px solid var(--border2)",fontSize:13,background:"var(--surface)",color:"var(--text)",outline:"none",fontFamily:"inherit",boxSizing:"border-box"};
 
