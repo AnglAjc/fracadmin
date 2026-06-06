@@ -128,7 +128,7 @@ function Paso1({ form, setF, searchResults, searching, onSelectResident, onNext,
 
       <div style={{ marginBottom:0 }}>
         <label style={{ display:"block",fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:7 }}>📱 Número de WhatsApp *</label>
-        <input style={inp} type="tel" value={form.telefono} onChange={e=>setF("telefono",e.target.value)} placeholder="55 1234 5678"/>
+        <input style={inp} type="tel" value={form.telefono} onChange={e=>{telefonoAutoRef.current="";setF("telefono",e.target.value);}} placeholder="55 1234 5678"/>
         <div style={{ fontSize:11,color:"var(--text3)",marginTop:5 }}>Recibirás la confirmación de tu pago aquí</div>
       </div>
 
@@ -477,6 +477,7 @@ export default function App() {
   const [error, setError]           = useState("");
 
   const searchTimer = useRef(null);
+  const telefonoAutoRef = useRef(""); // rastrea el último teléfono autorellenado
   const setF = (k,v) => setForm(f=>({...f,[k]:v}));
 
   // Cerrar dropdown de búsqueda al hacer clic fuera
@@ -511,7 +512,13 @@ export default function App() {
       const{data:full}=await axios.get(`${API}/api/residents/by-location?${params}`);
       const rd = full || r;
 
-      if(rd.telefono && !form.telefono) setF("telefono", rd.telefono);
+      if(rd.telefono) {
+        // Sobreescribir si: campo vacío, o el valor actual es el que autorellenamos antes (no lo escribió el usuario)
+        if(!form.telefono || form.telefono === telefonoAutoRef.current) {
+          setF("telefono", rd.telefono);
+          telefonoAutoRef.current = rd.telefono;
+        }
+      }
 
       try {
         const{data:todos}=await axios.get(`${API}/api/residents/search?q=${encodeURIComponent(r.residente.split("/")[0].trim())}`);
