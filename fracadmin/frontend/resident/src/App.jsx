@@ -25,7 +25,13 @@ async function fileToBase64(file) {
 }
 
 const DRAFT_KEY = "fracadmin_draft_v3";
-const saveDraft  = (d) => { try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify({...d,ts:Date.now()})); } catch {} };
+const saveDraft  = (d) => {
+  try {
+    // No guardar imágenes en draft para no exceder sessionStorage
+    const propsSinImg = (d.propiedades||[]).map(p=>({...p,imageBase64:null,imagePreview:null}));
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({...d,propiedades:propsSinImg,ts:Date.now()}));
+  } catch {}
+};
 const loadDraft  = () => { try { const d=JSON.parse(sessionStorage.getItem(DRAFT_KEY)||"null"); if(!d||Date.now()-d.ts>2*60*60*1000){sessionStorage.removeItem(DRAFT_KEY);return null;} return d; } catch{return null;} };
 const clearDraft = () => { try{sessionStorage.removeItem(DRAFT_KEY);}catch{} };
 
@@ -67,7 +73,16 @@ function Paso1({ form, setF, searchResults, searching, onSelectResident, onNext,
   const inp = { width:"100%",padding:"11px 13px",borderRadius:10,border:"0.5px solid var(--border2)",fontSize:14,background:"var(--surface)",color:"var(--text)",outline:"none",fontFamily:"inherit",boxSizing:"border-box" };
 
   const copyDato = (idx, valor) => {
-    navigator.clipboard.writeText(valor).then(() => { setCopiedIdx(idx); setTimeout(()=>setCopiedIdx(null),2000); });
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(valor).then(() => { setCopiedIdx(idx); setTimeout(()=>setCopiedIdx(null),2000); }).catch(()=>{});
+    } else {
+      // Fallback para HTTP o Safari antiguo
+      const el = document.createElement("textarea");
+      el.value = valor; el.style.position="fixed"; el.style.opacity="0";
+      document.body.appendChild(el); el.select();
+      try { document.execCommand("copy"); setCopiedIdx(idx); setTimeout(()=>setCopiedIdx(null),2000); } catch {}
+      document.body.removeChild(el);
+    }
   };
 
   return (
@@ -90,7 +105,7 @@ function Paso1({ form, setF, searchResults, searching, onSelectResident, onNext,
 
       {error && <div style={{ background:"var(--red-bg)",color:"var(--red)",borderRadius:9,padding:"10px 13px",fontSize:13,marginBottom:14,display:"flex",gap:8 }}><span>⚠️</span>{error}</div>}
 
-      <div style={{ marginBottom:14,position:"relative" }}>
+      <div data-search-container style={{ marginBottom:14,position:"relative" }}>
         <label style={{ display:"block",fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:7 }}>👤 Nombre completo *</label>
         <input style={inp} value={form.nombre} autoFocus
                onChange={e=>setF("nombre",e.target.value)}
@@ -163,9 +178,16 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
 
   const handleImage = async (idx, file) => {
     if(!file) return;
-    if(file.size>5*1024*1024) return;
-    const b64 = await fileToBase64(file);
-    setPropiedades(prev=>prev.map((p,i)=>i===idx?{...p,imageBase64:b64,imagePreview:URL.createObjectURL(file)}:p));
+    if(file.size>5*1024*1024) {
+      alert("El archivo es demasiado grande. El máximo permitido es 5 MB.");
+      return;
+    }
+    try {
+      const b64 = await fileToBase64(file);
+      setPropiedades(prev=>prev.map((p,i)=>i===idx?{...p,imageBase64:b64,imagePreview:URL.createObjectURL(file)}:p));
+    } catch {
+      alert("No se pudo leer el archivo. Intenta con otra imagen.");
+    }
   };
 
   const selectResidentProp = (idx, rd) => {
@@ -457,6 +479,15 @@ export default function App() {
   const searchTimer = useRef(null);
   const setF = (k,v) => setForm(f=>({...f,[k]:v}));
 
+  // Cerrar dropdown de búsqueda al hacer clic fuera
+  useEffect(() => {
+    const h = (e) => {
+      if (!e.target.closest("[data-search-container]")) setSearchResults([]);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
   useEffect(() => { saveDraft({ form, propiedades, monto, notas }); }, [form, propiedades, monto, notas]);
 
   const handleNombreChange = (v) => {
@@ -503,6 +534,8 @@ export default function App() {
   const validarPaso1 = () => {
     if(!form.nombre.trim()) return setError("Escribe tu nombre completo"), false;
     if(!form.telefono.trim()) return setError("Escribe tu número de WhatsApp"), false;
+    const telLimpio = form.telefono.replace(/\D/g,"");
+    if(telLimpio.length < 10) return setError("El número de WhatsApp debe tener al menos 10 dígitos"), false;
     setError(""); return true;
   };
 
@@ -531,27 +564,31 @@ export default function App() {
     setLoading(true);
     const propsValidas = propiedades.filter(p=>p.calle&&p.lote&&p.mesesSel.length>0);
     try {
-      await Promise.all(
-        propsValidas.flatMap(prop =>
-          prop.mesesSel.map(op =>
-            axios.post(`${API}/api/payments/submit`,{
-              resident_id:     prop.resident_id||null,
-              nombre:          form.nombre.trim(),
-              telefono:        form.telefono.trim(),
-              calle:           prop.calle,
-              lote:            prop.lote.trim(),
-              mza:             prop.mza.trim(),
-              mes:             op.mes,
-              anio:            op.anio,
-              monto:           Number(monto),
-              comprobante_b64: prop.imageBase64||null,
-              notas:           notas.trim()||null,
-            })
-          )
+      const envios = propsValidas.flatMap(prop =>
+        prop.mesesSel.map(op =>
+          axios.post(`${API}/api/payments/submit`,{
+            resident_id:     prop.resident_id||null,
+            nombre:          form.nombre.trim(),
+            telefono:        form.telefono.trim(),
+            calle:           prop.calle,
+            lote:            prop.lote.trim(),
+            mza:             (prop.mza||"").trim(),
+            mes:             op.mes,
+            anio:            op.anio,
+            monto:           Number(monto),
+            comprobante_b64: prop.imageBase64||null,
+            notas:           notas.trim()||null,
+          })
         )
       );
-      clearDraft();
-      setStep("success");
+      const resultados = await Promise.allSettled(envios);
+      const fallidos = resultados.filter(r => r.status === "rejected");
+      if (fallidos.length > 0) {
+        setError(`${fallidos.length} de ${resultados.length} envíos fallaron. Contacta al administrador.`);
+      } else {
+        clearDraft();
+        setStep("success");
+      }
     } catch { setError("Hubo un problema al enviar. Intenta de nuevo."); }
     finally { setLoading(false); }
   };
