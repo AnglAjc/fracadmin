@@ -12,7 +12,7 @@ function getMeses2026() {
   for (let m = 1; m <= 12; m++) {
     opciones.push({ label:`${MESES_FULL[m-1]} 2026`, mes:m, anio:2026, key:`${m}-2026`, cuota:400 });
   }
-  return opciones.reverse();
+  return [...opciones].reverse();
 }
 
 async function fileToBase64(file) {
@@ -449,7 +449,7 @@ function Paso3({ form, propiedades, notas, setNotas, onSubmit, onBack, loading, 
             {!p.imageBase64&&<div style={{fontSize:11,color:"var(--red)",marginTop:4}}>⚠️ Sin comprobante adjunto</div>}
           </div>
         ))}
-        {totalEnvios>1&&monto&&(
+        {totalEnvios>1&&(
           <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:14,borderTop:"0.5px solid var(--border)",paddingTop:8,marginTop:4,color:"var(--blue)"}}>
             <span>Total</span><span>${(MONTO*totalEnvios).toLocaleString()} MXN</span>
           </div>
