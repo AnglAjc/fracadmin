@@ -49,9 +49,9 @@ router.get("/by-location", async (req, res) => {
       SELECT id, calle, lote, mza, residente, telefono, pagos25, pagos26, deuda_extra
       FROM residents
       WHERE LOWER(TRIM(calle)) = LOWER(TRIM($1))
-        AND LOWER(TRIM(lote))  = LOWER(TRIM($2))
+        AND LOWER(TRIM(lote))  ILIKE LOWER(TRIM($2)) || '%'
         AND ($3::text IS NULL OR LOWER(TRIM(mza)) = LOWER(TRIM($3)))
-      ORDER BY mza
+      ORDER BY lote, mza
       LIMIT 10
     `, [calle, lote, mza || null]);
 

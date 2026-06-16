@@ -190,7 +190,7 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
         // Múltiples residentes con el mismo lote → mostrar selector
         setPropiedades(prev => prev.map((p,i) => i===idx ? {...p, addressResults:data} : p));
       } else {
-        // Resultado único → seleccionar automáticamente como antes
+        // Resultado único → seleccionar automáticamente
         setPropiedades(prev => prev.map((p,i) => i===idx ? {...p, residentData:data, addressResults:[]} : p));
       }
     } catch {}
@@ -264,12 +264,25 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
               📍 {prop.residentData.calle} · Casa {prop.residentData.lote} · Mza {prop.residentData.mza}
             </div>
           )}
-          {propiedades.length>1 && (
-            <button type="button" onClick={()=>removeProp(propActiva)}
-                    style={{background:"var(--red-bg)",border:"none",color:"var(--red)",borderRadius:7,cursor:"pointer",padding:"4px 8px",display:"flex",alignItems:"center",gap:4,fontSize:11,fontFamily:"inherit"}}>
-              <Trash/> Quitar
-            </button>
-          )}
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            {/* Botón Cambiar: aparece cuando ya se seleccionó un residente */}
+            {prop.residentData && (
+              <button type="button"
+                onClick={() => setPropiedades(prev => prev.map((p,i) => i===propActiva
+                  ? {...p, residentData:null, addressResults:[], calle:"", lote:"", mza:"", resident_id:"", mesesSel:[]}
+                  : p
+                ))}
+                style={{background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--text2)",borderRadius:7,cursor:"pointer",padding:"4px 10px",display:"flex",alignItems:"center",gap:4,fontSize:11,fontFamily:"inherit"}}>
+                ✏️ Cambiar dirección
+              </button>
+            )}
+            {propiedades.length>1 && (
+              <button type="button" onClick={()=>removeProp(propActiva)}
+                      style={{background:"var(--red-bg)",border:"none",color:"var(--red)",borderRadius:7,cursor:"pointer",padding:"4px 8px",display:"flex",alignItems:"center",gap:4,fontSize:11,fontFamily:"inherit"}}>
+                <Trash/> Quitar
+              </button>
+            )}
+          </div>
         </div>
 
         {residenteOpciones.length > 0 && !prop.residentData && (
@@ -294,7 +307,7 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
 
         {(!prop.residentData || prop.residentData?.manual) && (
           <>
-          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom: prop.addressResults?.length > 0 ? 8 : 12 }}>
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:prop.addressResults?.length>0?8:12 }}>
             <div>
               <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:4}}>Calle *</div>
               <select style={{...inp,cursor:"pointer"}} value={prop.calle}
@@ -317,9 +330,9 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
 
           {/* ── Dropdown: múltiples residentes con el mismo lote ── */}
           {prop.addressResults?.length > 0 && (
-            <div style={{ marginBottom:12, border:"1px solid var(--blue)", borderRadius:9, overflow:"hidden" }}>
-              <div style={{ padding:"7px 12px", fontSize:11, fontWeight:600, color:"var(--blue)", background:"var(--blue-bg)", borderBottom:"1px solid var(--blue)" }}>
-                🏠 Encontramos {prop.addressResults.length} residentes en {prop.calle} L{prop.lote} — ¿Cuál es el tuyo?
+            <div style={{marginBottom:12,border:"1px solid var(--blue)",borderRadius:9,overflow:"hidden"}}>
+              <div style={{padding:"7px 12px",fontSize:11,fontWeight:600,color:"var(--blue)",background:"var(--blue-bg)",borderBottom:"1px solid var(--blue)"}}>
+                🏠 Encontramos {prop.addressResults.length} propiedades en {prop.calle} L{prop.lote} — ¿Cuál es la tuya?
               </div>
               {prop.addressResults.map(rd => (
                 <button key={rd.id} type="button"
@@ -327,24 +340,27 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
                     ? {...p, residentData:rd, addressResults:[], calle:rd.calle, lote:rd.lote, mza:rd.mza||""}
                     : p
                   ))}
-                  style={{ display:"flex", alignItems:"center", justifyContent:"space-between", width:"100%", padding:"10px 14px", background:"var(--surface)", border:"none", borderBottom:"0.5px solid var(--border)", cursor:"pointer", fontFamily:"inherit", textAlign:"left" }}
+                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"10px 14px",background:"var(--surface)",border:"none",borderBottom:"0.5px solid var(--border)",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}
                   onMouseOver={e=>e.currentTarget.style.background="var(--blue-bg)"}
                   onMouseOut={e=>e.currentTarget.style.background="var(--surface)"}>
                   <div>
-                    <div style={{ fontSize:13, fontWeight:600, color:"var(--text)" }}>
+                    <div style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>
                       {rd.residente.split("/")[0].trim()}
                     </div>
-                    <div style={{ fontSize:11, color:"var(--text3)", marginTop:2 }}>
+                    <div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>
                       {rd.calle} · Casa {rd.lote} · Mza {rd.mza}
                     </div>
                   </div>
-                  <span style={{ fontSize:12, color:"var(--blue)", fontWeight:600 }}>Seleccionar →</span>
+                  <span style={{fontSize:12,color:"var(--blue)",fontWeight:600}}>Seleccionar →</span>
                 </button>
               ))}
               <button type="button"
-                onClick={() => setPropiedades(prev => prev.map((p,i) => i===propActiva ? {...p, addressResults:[], residentData:{manual:true}} : p))}
-                style={{ display:"block", width:"100%", padding:"9px 14px", background:"transparent", border:"none", borderTop:"0.5px dashed var(--border2)", cursor:"pointer", fontSize:12, color:"var(--text3)", fontFamily:"inherit", textAlign:"left" }}>
-                + Mi casa no aparece en la lista
+                onClick={() => setPropiedades(prev => prev.map((p,i) => i===propActiva
+                  ? {...p, addressResults:[], residentData:{manual:true}}
+                  : p
+                ))}
+                style={{display:"block",width:"100%",padding:"9px 14px",background:"transparent",border:"none",borderTop:"0.5px dashed var(--border2)",cursor:"pointer",fontSize:12,color:"var(--text3)",fontFamily:"inherit",textAlign:"left"}}>
+                + Mi propiedad no aparece en la lista
               </button>
             </div>
           )}
