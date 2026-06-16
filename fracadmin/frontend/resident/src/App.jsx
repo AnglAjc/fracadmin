@@ -35,7 +35,7 @@ const saveDraft  = (d) => {
 const loadDraft  = () => { try { const d=JSON.parse(sessionStorage.getItem(DRAFT_KEY)||"null"); if(!d||Date.now()-d.ts>2*60*60*1000){sessionStorage.removeItem(DRAFT_KEY);return null;} return d; } catch{return null;} };
 const clearDraft = () => { try{sessionStorage.removeItem(DRAFT_KEY);}catch{} };
 
-const emptyProp = () => ({ id:Date.now(), calle:"", lote:"", mza:"", resident_id:"", residentData:null, mesesSel:[], imagePreview:null, imageBase64:null });
+const emptyProp = () => ({ id:Date.now(), calle:"", lote:"", mza:"", resident_id:"", residentData:null, addressResults:[], mesesSel:[], imagePreview:null, imageBase64:null });
 
 function calcPendientes(rd) {
   if (!rd) return [];
@@ -178,11 +178,21 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
   const toggleMes  = (idx,op) => setPropiedades(prev=>prev.map((p,i)=>i===idx?{...p,mesesSel:p.mesesSel.find(m=>m.key===op.key)?p.mesesSel.filter(m=>m.key!==op.key):[...p.mesesSel,op]}:p));
 
   const autofillProp = async (idx, calle, lote, mza) => {
-    if (!calle||!lote) return;
+    if (!calle || !lote) return;
+    // Limpiar selección previa al cambiar dirección
+    setPropiedades(prev => prev.map((p,i) => i===idx ? {...p, residentData:null, addressResults:[]} : p));
     try {
-      const p=new URLSearchParams({calle,lote}); if(mza) p.set("mza",mza);
-      const {data}=await axios.get(`${API}/api/residents/by-location?${p}`);
-      if(data) updateProp(idx,"residentData",data);
+      const p = new URLSearchParams({calle, lote});
+      if (mza) p.set("mza", mza);
+      const { data } = await axios.get(`${API}/api/residents/by-location?${p}`);
+      if (!data) return;
+      if (Array.isArray(data)) {
+        // Múltiples residentes con el mismo lote → mostrar selector
+        setPropiedades(prev => prev.map((p,i) => i===idx ? {...p, addressResults:data} : p));
+      } else {
+        // Resultado único → seleccionar automáticamente como antes
+        setPropiedades(prev => prev.map((p,i) => i===idx ? {...p, residentData:data, addressResults:[]} : p));
+      }
     } catch {}
   };
 
@@ -283,7 +293,8 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
         )}
 
         {(!prop.residentData || prop.residentData?.manual) && (
-          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12 }}>
+          <>
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom: prop.addressResults?.length > 0 ? 8 : 12 }}>
             <div>
               <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:4}}>Calle *</div>
               <select style={{...inp,cursor:"pointer"}} value={prop.calle}
@@ -303,6 +314,41 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
                      onChange={e=>{updateProp(propActiva,"mza",e.target.value);autofillProp(propActiva,prop.calle,prop.lote,e.target.value);}}/>
             </div>
           </div>
+
+          {/* ── Dropdown: múltiples residentes con el mismo lote ── */}
+          {prop.addressResults?.length > 0 && (
+            <div style={{ marginBottom:12, border:"1px solid var(--blue)", borderRadius:9, overflow:"hidden" }}>
+              <div style={{ padding:"7px 12px", fontSize:11, fontWeight:600, color:"var(--blue)", background:"var(--blue-bg)", borderBottom:"1px solid var(--blue)" }}>
+                🏠 Encontramos {prop.addressResults.length} residentes en {prop.calle} L{prop.lote} — ¿Cuál es el tuyo?
+              </div>
+              {prop.addressResults.map(rd => (
+                <button key={rd.id} type="button"
+                  onClick={() => setPropiedades(prev => prev.map((p,i) => i===propActiva
+                    ? {...p, residentData:rd, addressResults:[], calle:rd.calle, lote:rd.lote, mza:rd.mza||""}
+                    : p
+                  ))}
+                  style={{ display:"flex", alignItems:"center", justifyContent:"space-between", width:"100%", padding:"10px 14px", background:"var(--surface)", border:"none", borderBottom:"0.5px solid var(--border)", cursor:"pointer", fontFamily:"inherit", textAlign:"left" }}
+                  onMouseOver={e=>e.currentTarget.style.background="var(--blue-bg)"}
+                  onMouseOut={e=>e.currentTarget.style.background="var(--surface)"}>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:600, color:"var(--text)" }}>
+                      {rd.residente.split("/")[0].trim()}
+                    </div>
+                    <div style={{ fontSize:11, color:"var(--text3)", marginTop:2 }}>
+                      {rd.calle} · Casa {rd.lote} · Mza {rd.mza}
+                    </div>
+                  </div>
+                  <span style={{ fontSize:12, color:"var(--blue)", fontWeight:600 }}>Seleccionar →</span>
+                </button>
+              ))}
+              <button type="button"
+                onClick={() => setPropiedades(prev => prev.map((p,i) => i===propActiva ? {...p, addressResults:[], residentData:{manual:true}} : p))}
+                style={{ display:"block", width:"100%", padding:"9px 14px", background:"transparent", border:"none", borderTop:"0.5px dashed var(--border2)", cursor:"pointer", fontSize:12, color:"var(--text3)", fontFamily:"inherit", textAlign:"left" }}>
+                + Mi casa no aparece en la lista
+              </button>
+            </div>
+          )}
+          </>
         )}
 
         {/* ── Bloque de meses ── */}

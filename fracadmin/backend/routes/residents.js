@@ -39,6 +39,8 @@ router.get("/search", async (req, res) => {
 });
 
 // GET /api/residents/by-location
+// Si hay más de un residente en esa dirección (mismo lote, diferente mza),
+// devuelve todos para que el frontend muestre un selector.
 router.get("/by-location", async (req, res) => {
   const { calle, lote, mza } = req.query;
   if (!calle || !lote) return res.json(null);
@@ -49,9 +51,16 @@ router.get("/by-location", async (req, res) => {
       WHERE LOWER(TRIM(calle)) = LOWER(TRIM($1))
         AND LOWER(TRIM(lote))  = LOWER(TRIM($2))
         AND ($3::text IS NULL OR LOWER(TRIM(mza)) = LOWER(TRIM($3)))
-      LIMIT 1
+      ORDER BY mza
+      LIMIT 10
     `, [calle, lote, mza || null]);
-    res.json(rows[0] || null);
+
+    if (rows.length === 0) return res.json(null);
+    // Si hay exactamente uno (o se especificó mza), devolver objeto simple
+    // para no romper el comportamiento anterior del frontend
+    if (rows.length === 1) return res.json(rows[0]);
+    // Múltiples → devolver array para que el frontend muestre selector
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: "Error en búsqueda" });
   }
@@ -151,42 +160,6 @@ router.get("/:id/historial", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("[residents/historial]", err.message);
     res.status(500).json({ error: "Error al obtener historial" });
-  }
-});
-
-// GET /api/residents/:id/pagos-manuales
-// Devuelve los movimientos de finanzas registrados manualmente para este residente
-router.get("/:id/pagos-manuales", requireAuth, async (req, res) => {
-  try {
-    const { rows: resident } = await pool.query(
-      "SELECT residente, calle, lote FROM residents WHERE id = $1", [req.params.id]
-    );
-    if (!resident[0]) return res.status(404).json({ error: "No encontrado" });
-
-    const nombreCorto = resident[0].residente.split("/")[0].trim();
-
-    // Buscar movimientos en finanzas que correspondan a este residente
-    // Fueron creados por toggle-pago con el patrón: "Cuota <Mes> <Año> — <nombre>"
-    const { rows } = await pool.query(`
-      SELECT
-        m.id,
-        m.monto,
-        m.notas,
-        TO_CHAR(m.fecha, 'DD/MM/YYYY') AS fecha,
-        -- Extraer mes y año del campo fecha
-        EXTRACT(MONTH FROM m.fecha)::int AS mes,
-        EXTRACT(YEAR  FROM m.fecha)::int AS anio
-      FROM finanzas_movimientos m
-      WHERE m.tipo = 'ingreso'
-        AND m.notas ILIKE '%Registrado manualmente%'
-        AND m.concepto ILIKE $1
-      ORDER BY m.fecha DESC
-    `, [`%${nombreCorto}%`]);
-
-    res.json(rows);
-  } catch (err) {
-    console.error("[residents/pagos-manuales]", err.message);
-    res.status(500).json({ error: "Error al obtener pagos manuales" });
   }
 });
 
