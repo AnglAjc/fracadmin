@@ -154,4 +154,40 @@ router.get("/:id/historial", requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/residents/:id/pagos-manuales
+// Devuelve los movimientos de finanzas registrados manualmente para este residente
+router.get("/:id/pagos-manuales", requireAuth, async (req, res) => {
+  try {
+    const { rows: resident } = await pool.query(
+      "SELECT residente, calle, lote FROM residents WHERE id = $1", [req.params.id]
+    );
+    if (!resident[0]) return res.status(404).json({ error: "No encontrado" });
+
+    const nombreCorto = resident[0].residente.split("/")[0].trim();
+
+    // Buscar movimientos en finanzas que correspondan a este residente
+    // Fueron creados por toggle-pago con el patrón: "Cuota <Mes> <Año> — <nombre>"
+    const { rows } = await pool.query(`
+      SELECT
+        m.id,
+        m.monto,
+        m.notas,
+        TO_CHAR(m.fecha, 'DD/MM/YYYY') AS fecha,
+        -- Extraer mes y año del campo fecha
+        EXTRACT(MONTH FROM m.fecha)::int AS mes,
+        EXTRACT(YEAR  FROM m.fecha)::int AS anio
+      FROM finanzas_movimientos m
+      WHERE m.tipo = 'ingreso'
+        AND m.notas ILIKE '%Registrado manualmente%'
+        AND m.concepto ILIKE $1
+      ORDER BY m.fecha DESC
+    `, [`%${nombreCorto}%`]);
+
+    res.json(rows);
+  } catch (err) {
+    console.error("[residents/pagos-manuales]", err.message);
+    res.status(500).json({ error: "Error al obtener pagos manuales" });
+  }
+});
+
 module.exports = router;

@@ -193,10 +193,33 @@ function HistorialModal({ residentId, onClose }) {
   const [imgModal, setImgModal] = useState(null);
 
   useEffect(() => {
-    api.get(`/api/residents/${residentId}/historial`)
-      .then(r => setData(r.data))
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.get(`/api/residents/${residentId}/historial`),
+      api.get(`/api/residents/${residentId}/pagos-manuales`).catch(() => ({ data: [] })),
+    ]).then(([histRes, manualRes]) => {
+      const historial = histRes.data;
+      // Combinar pagos de comprobantes con pagos manuales de finanzas
+      const manuales = (manualRes.data || []).map(m => ({
+        id:             `manual-${m.id}`,
+        mes:             m.mes,
+        anio:            m.anio,
+        monto:           m.monto,
+        status:          "aprobado",
+        fecha_envio:     m.fecha,
+        fecha_revision:  m.fecha,
+        revisado_por:    "Admin (manual)",
+        whatsapp_sent:   false,
+        comprobante_url: null,
+        es_manual:       true,
+        notas:           m.notas || "",
+      }));
+      // Unir y ordenar por año desc, mes desc
+      const todosPagos = [...(historial.pagos || []), ...manuales].sort((a, b) => {
+        if (Number(b.anio) !== Number(a.anio)) return Number(b.anio) - Number(a.anio);
+        return Number(b.mes) - Number(a.mes);
+      });
+      setData({ ...historial, pagos: todosPagos });
+    }).catch(console.error).finally(() => setLoading(false));
   }, [residentId]);
 
   const verComprobante = async (pagoId) => {
@@ -258,8 +281,15 @@ function HistorialModal({ residentId, onClose }) {
                   const sb = STATUS_BADGE[p.status] || STATUS_BADGE.pendiente;
                   const mesNombre = MESES_FULL[Number(p.mes)-1] || p.mes;
                   return (
-                    <tr key={p.id}>
-                      <td style={{ fontSize:12,color:"var(--text3)",whiteSpace:"nowrap" }}>{p.fecha_envio}</td>
+                    <tr key={p.id} style={{ opacity: p.es_manual ? 0.92 : 1 }}>
+                      <td style={{ fontSize:12,color:"var(--text3)",whiteSpace:"nowrap" }}>
+                        {p.fecha_envio}
+                        {p.es_manual && (
+                          <div style={{ fontSize:10,color:"var(--blue)",marginTop:2,fontWeight:600 }}>
+                            ✏️ Registro manual
+                          </div>
+                        )}
+                      </td>
                       <td style={{ fontWeight:500,fontSize:13 }}>{mesNombre} {p.anio}</td>
                       <td style={{ textAlign:"right",fontWeight:600,color:"var(--blue)" }}>{fmtMXN(p.monto)}</td>
                       <td>
@@ -267,6 +297,11 @@ function HistorialModal({ residentId, onClose }) {
                         {p.rejection_reason && (
                           <div style={{ fontSize:11,color:"var(--text3)",marginTop:3,maxWidth:160 }} title={p.rejection_reason}>
                             {p.rejection_reason.slice(0,40)}{p.rejection_reason.length>40?"…":""}
+                          </div>
+                        )}
+                        {p.es_manual && p.notas && (
+                          <div style={{ fontSize:11,color:"var(--text3)",marginTop:3 }} title={p.notas}>
+                            {p.notas.slice(0,40)}{p.notas.length>40?"…":""}
                           </div>
                         )}
                       </td>
@@ -354,12 +389,12 @@ function ResidentModal({ resident, onClose, onSaved }) {
         {error&&<div className="alert error" style={{marginBottom:12}}>{error}</div>}
         <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12 }}>
           <div><label style={LS}>Calle *</label><select value={form.calle} onChange={e=>set("calle",e.target.value)} style={{...IS,cursor:"pointer"}}><option value="">Selecciona...</option>{CALLES.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-          <div><label style={LS}>Lote *</label><input style={IS} value={form.lote} onChange={e=>set("lote",e.target.value)} placeholder="Ej: 12"/></div>
-          <div><label style={LS}>Manzana *</label><input style={IS} value={form.mza} onChange={e=>set("mza",e.target.value)} placeholder="Ej: 3"/></div>
-          <div><label style={LS}>Teléfono</label><input style={IS} value={form.telefono} onChange={e=>set("telefono",e.target.value)} placeholder="55 1234 5678"/></div>
+          <div><label style={LS}>Lote *</label><input style={IS} autoComplete="off" value={form.lote} onChange={e=>set("lote",e.target.value)} placeholder="Ej: 12"/></div>
+          <div><label style={LS}>Manzana *</label><input style={IS} autoComplete="off" value={form.mza} onChange={e=>set("mza",e.target.value)} placeholder="Ej: 3"/></div>
+          <div><label style={LS}>Teléfono</label><input style={IS} autoComplete="off" value={form.telefono} onChange={e=>set("telefono",e.target.value)} placeholder="55 1234 5678"/></div>
         </div>
-        <div style={{marginBottom:12}}><label style={LS}>Nombre del residente *</label><input style={IS} value={form.residente} onChange={e=>set("residente",e.target.value)} placeholder="Nombre completo"/></div>
-        <div style={{marginBottom:12}}><label style={LS}>Deuda extra (MXN)</label><input style={IS} type="number" min="0" value={form.deuda_extra} onChange={e=>set("deuda_extra",e.target.value)}/></div>
+        <div style={{marginBottom:12}}><label style={LS}>Nombre del residente *</label><input style={IS} autoComplete="off" value={form.residente} onChange={e=>set("residente",e.target.value)} placeholder="Nombre completo"/></div>
+        <div style={{marginBottom:12}}><label style={LS}>Deuda extra (MXN)</label><input style={IS} autoComplete="off" type="number" min="0" value={form.deuda_extra} onChange={e=>set("deuda_extra",e.target.value)}/></div>
         <div style={{marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:"var(--surface2)",borderRadius:8}}>
           <div>
             <div style={{fontSize:13,fontWeight:500}}>⏸ Pausar propiedad</div>

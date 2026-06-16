@@ -43,8 +43,18 @@ function calcPendientes(rd) {
   const maxM26 = now.getFullYear()>=2026 ? now.getMonth() : 0;
   const p25 = rd.pagos25||{}, p26 = rd.pagos26||{};
   const list = [];
+  // 2025: solo "pendiente" explícito (ignoramos null de 2025 por instrucción del admin)
   for (let m=0;m<12;m++) if(p25[m]==="pendiente") list.push({mes:m+1,anio:2025,key:`${m+1}-2025`,label:`${MESES_FULL[m]} 2025`,cuota:350});
-  for (let m=0;m<maxM26;m++) if(p26[m]==="pendiente") list.push({mes:m+1,anio:2026,key:`${m+1}-2026`,label:`${MESES_FULL[m]} 2026`,cuota:400});
+  // 2026: "pendiente" O null = debe ese mes; número < 400 = pago parcial, también aparece
+  for (let m=0;m<maxM26;m++) {
+    const v = p26[m];
+    if (v === "pendiente" || v === null || v === undefined) {
+      list.push({mes:m+1,anio:2026,key:`${m+1}-2026`,label:`${MESES_FULL[m]} 2026`,cuota:400});
+    } else if (typeof v === "number" && v < 400) {
+      // Pago parcial: mostrar la diferencia pendiente
+      list.push({mes:m+1,anio:2026,key:`${m+1}-2026`,label:`${MESES_FULL[m]} 2026 (parcial $${v})`,cuota:400-v});
+    }
+  }
   return list;
 }
 
@@ -128,7 +138,7 @@ function Paso1({ form, setF, searchResults, searching, onSelectResident, onNext,
 
       <div style={{ marginBottom:0 }}>
         <label style={{ display:"block",fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:7 }}>📱 Número de WhatsApp *</label>
-        <input style={inp} type="tel" value={form.telefono} onChange={e=>setF("telefono",e.target.value)} placeholder="55 1234 5678"/>
+        <input style={inp} autoComplete="off" type="tel" value={form.telefono} onChange={e=>setF("telefono",e.target.value)} placeholder="55 1234 5678"/>
         <div style={{ fontSize:11,color:"var(--text3)",marginTop:5 }}>Recibirás la confirmación de tu pago aquí</div>
       </div>
 
@@ -284,12 +294,12 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
             </div>
             <div>
               <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:4}}>Casa *</div>
-              <input style={inp} value={prop.lote} placeholder="Ej: 12"
+              <input style={inp} autoComplete="off" value={prop.lote} placeholder="Ej: 12"
                      onChange={e=>{updateProp(propActiva,"lote",e.target.value);autofillProp(propActiva,prop.calle,e.target.value,prop.mza);}}/>
             </div>
             <div>
               <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:4}}>Manzana</div>
-              <input style={inp} value={prop.mza} placeholder="Ej: 3"
+              <input style={inp} autoComplete="off" value={prop.mza} placeholder="Ej: 3"
                      onChange={e=>{updateProp(propActiva,"mza",e.target.value);autofillProp(propActiva,prop.calle,prop.lote,e.target.value);}}/>
             </div>
           </div>
