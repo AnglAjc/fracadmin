@@ -3,12 +3,51 @@ const pool   = require("../db/pool");
 const requireAuth = require("../middleware/requireAuth");
 const whatsappSvc = require("../services/whatsapp");
 
-// Calcula deuda de un residente dado el mes tope de 2026
+// ---------------------------------------------------------------------------
+// calcDeuda — versión corregida
+//
+// Reglas:
+//   • Un slot "pendiente" → debe cobrar la cuota completa del año.
+//   • Un slot null/undefined → mes pasado sin registro → cuenta como deuda.
+//   • Un slot numérico < cuota → pago parcial → cobra la diferencia.
+//   • Un slot numérico >= cuota → pagado, sin deuda.
+//   • Un slot "vacio" → lote desocupado, no cobra.
+//   • pausado = true → sin deuda.
+//
+// Cuotas históricas: 2025 = $350, 2026 = $400
+// ---------------------------------------------------------------------------
 function calcDeuda(r, maxMes2026) {
   if (r.pausado) return 0;
+
+  const CUOTA_25 = 350;
+  const CUOTA_26 = 400;
+
   let deuda = 0;
-  for (let m = 0; m < 12; m++)          if (r.pagos25[m] === "pendiente") deuda += 350;
-  for (let m = 0; m < maxMes2026; m++)   if (r.pagos26[m] === "pendiente") deuda += 400;
+
+  // ── 2025 (12 meses) ──────────────────────────────────────────────────────
+  for (let m = 0; m < 12; m++) {
+    const v = r.pagos25[m];
+    if (v === "vacio") continue;                        // desocupado
+    if (v === "pendiente" || v === null || v === undefined) {
+      deuda += CUOTA_25;                                // sin pago
+    } else if (typeof v === "number" && v < CUOTA_25) {
+      deuda += (CUOTA_25 - v);                         // pago parcial
+    }
+    // v >= CUOTA_25 → pagado completo, sin deuda
+  }
+
+  // ── 2026 (hasta el mes actual, exclusive) ────────────────────────────────
+  for (let m = 0; m < maxMes2026; m++) {
+    const v = r.pagos26[m];
+    if (v === "vacio") continue;                        // desocupado
+    if (v === "pendiente" || v === null || v === undefined) {
+      deuda += CUOTA_26;                                // sin pago
+    } else if (typeof v === "number" && v < CUOTA_26) {
+      deuda += (CUOTA_26 - v);                         // pago parcial
+    }
+    // v >= CUOTA_26 → pagado completo, sin deuda
+  }
+
   deuda += Number(r.deuda_extra || 0);
   return deuda;
 }

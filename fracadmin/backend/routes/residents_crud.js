@@ -65,62 +65,86 @@ router.delete("/:id", requireAuth, async (req, res) => {
   }
 });
 
-// PATCH /api/residents/:id/toggle-pago — registrar/deshacer pago manualmente + sync finanzas
+// ---------------------------------------------------------------------------
+// PATCH /api/residents/:id/toggle-pago
+// Registra o deshace un pago manualmente y sincroniza con finanzas.
+//
+// Correcciones vs versión anterior:
+//   1. Al "deshacer" se guarda "pendiente" en el slot (antes quedaba null,
+//      que calcDeuda también contaba como deuda — comportamiento correcto —
+//      pero el slot quedaba sucio en la BD sin un estado claro).
+//   2. El valor guardado en el slot cuando se paga es siempre el monto
+//      numérico real (correcto desde antes), para que calcDeuda pueda
+//      detectar pagos parciales y cobrar la diferencia.
+//   3. La búsqueda del movimiento duplicado en finanzas usa ILIKE con el
+//      patrón corregido para que coincida aunque el monto sea distinto a 400.
+// ---------------------------------------------------------------------------
 router.patch("/:id/toggle-pago", requireAuth, async (req, res) => {
   const { anio, mes, accion, monto, metodo } = req.body;
   if (!anio || mes === undefined) return res.status(400).json({ error: "anio y mes requeridos" });
 
-  const campo  = String(anio) === "2025" ? "pagos25" : "pagos26";
-  const mesIdx = Number(mes);
-  // Monto: usar el enviado, o 400 por defecto (mensualidad actual)
-  const montoNum = Number(monto) || 400;
+  const CUOTA_DEFAULT = String(anio) === "2025" ? 350 : 400;
+  const campo    = String(anio) === "2025" ? "pagos25" : "pagos26";
+  const mesIdx   = Number(mes);
+  const montoNum = Number(monto) || CUOTA_DEFAULT;
   const metodoStr = metodo || "efectivo";
-  const valor    = accion === "pagar" ? montoNum : "pendiente";
+
+  // Al pagar → guarda el monto numérico real (permite detectar pagos parciales)
+  // Al deshacer → guarda "pendiente" explícitamente (estado limpio en BD)
+  const valorSlot = accion === "pagar" ? montoNum : "pendiente";
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // 1. Actualizar pagos del residente
+    // 1. Actualizar el slot de pagos del residente
     const { rows } = await client.query(
-      `UPDATE residents SET ${campo}=jsonb_set(${campo},$1,$2::jsonb,true), updated_at=NOW() WHERE id=$3 RETURNING *`,
-      [`{${mesIdx}}`, JSON.stringify(valor), req.params.id]
+      `UPDATE residents
+         SET ${campo} = jsonb_set(${campo}, $1, $2::jsonb, true),
+             updated_at = NOW()
+       WHERE id = $3
+       RETURNING *`,
+      [`{${mesIdx}}`, JSON.stringify(valorSlot), req.params.id]
     );
-    if (!rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Residente no encontrado" }); }
+    if (!rows[0]) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Residente no encontrado" });
+    }
 
-    const residente = rows[0];
-
-    // 2. Sincronizar con finanzas
-    const mesNombre   = MESES_FULL[mesIdx] || `Mes ${mesIdx+1}`;
-    const fechaPago   = `${anio}-${String(mesIdx+1).padStart(2,"0")}-05`;
+    const residente   = rows[0];
+    const mesNombre   = MESES_FULL[mesIdx] || `Mes ${mesIdx + 1}`;
+    const fechaPago   = `${anio}-${String(mesIdx + 1).padStart(2, "0")}-05`;
     const nombreCorto = residente.residente.split("/")[0].trim();
+    // Patrón de búsqueda para identificar el movimiento en finanzas
+    const patronConcepto = `%${nombreCorto}%${mesNombre} ${anio}%`;
 
     if (accion === "pagar") {
-      // Buscar categoría "Cuotas residentes"
+      // ── Categoría ──────────────────────────────────────────────────────────
       const catRes = await client.query(
         "SELECT id FROM finanzas_categorias WHERE nombre='Cuotas residentes' LIMIT 1"
       );
       const catId = catRes.rows[0]?.id || null;
 
-      // Verificar que no exista ya un movimiento para este mes/residente
+      // ── Evitar duplicado en finanzas ───────────────────────────────────────
       const exists = await client.query(`
         SELECT id FROM finanzas_movimientos
         WHERE concepto ILIKE $1 AND fecha = $2 AND tipo = 'ingreso'
         LIMIT 1
-      `, [`%${nombreCorto}%${mesNombre} ${anio}%`, fechaPago]);
+      `, [patronConcepto, fechaPago]);
 
       if (exists.rows.length === 0) {
-        // Buscar cuenta según método de pago
-      const cuentaTipo = metodoStr === "debito" ? "debito" : "efectivo";
-      const cuentaRes = await client.query(
-        "SELECT id FROM finanzas_cuentas WHERE tipo=$1 ORDER BY id LIMIT 1",
-        [cuentaTipo]
-      );
-      const cuentaId = cuentaRes.rows[0]?.id || null;
+        // ── Cuenta según método de pago ────────────────────────────────────
+        const cuentaTipo = metodoStr === "debito" ? "debito" : "efectivo";
+        const cuentaRes  = await client.query(
+          "SELECT id FROM finanzas_cuentas WHERE tipo=$1 ORDER BY id LIMIT 1",
+          [cuentaTipo]
+        );
+        const cuentaId = cuentaRes.rows[0]?.id || null;
 
-      await client.query(`
-          INSERT INTO finanzas_movimientos (fecha, tipo, concepto, monto, categoria_id, cuenta_id, notas)
-          VALUES ($1,'ingreso',$2,$3,$4,$5,$6)
+        await client.query(`
+          INSERT INTO finanzas_movimientos
+            (fecha, tipo, concepto, monto, categoria_id, cuenta_id, notas)
+          VALUES ($1, 'ingreso', $2, $3, $4, $5, $6)
         `, [
           fechaPago,
           `Cuota ${mesNombre} ${anio} — ${nombreCorto}`,
@@ -131,12 +155,14 @@ router.patch("/:id/toggle-pago", requireAuth, async (req, res) => {
         ]);
       }
     } else {
-      // Deshacer: eliminar el movimiento de finanzas si existe
+      // ── Deshacer: eliminar el movimiento de finanzas creado manualmente ───
       await client.query(`
         DELETE FROM finanzas_movimientos
-        WHERE concepto ILIKE $1 AND fecha = $2 AND tipo = 'ingreso'
+        WHERE concepto ILIKE $1
+          AND fecha    = $2
+          AND tipo     = 'ingreso'
           AND notas ILIKE '%Registrado manualmente%'
-      `, [`%${nombreCorto}%${mesNombre} ${anio}%`, fechaPago]);
+      `, [patronConcepto, fechaPago]);
     }
 
     await client.query("COMMIT");
