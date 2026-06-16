@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import api from "../lib/api";
 import { fmtMXN } from "../lib/helpers";
 import { useNavigate } from "react-router-dom";
@@ -19,20 +19,40 @@ function MiniBar({ label, value, max, color }) {
 }
 
 export default function DashboardPage() {
-  const [data,    setData]    = useState(null);
-  const [morosos, setMorosos] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [data,       setData]       = useState(null);
+  const [morosos,    setMorosos]    = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState(null);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    Promise.all([
-      api.get("/api/admin/dashboard"),
-      api.get("/api/admin/morosos"),
-    ]).then(([d, m]) => {
+  // ── Carga todos los datos ────────────────────────────────────────────────
+  const fetchAll = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+
+    try {
+      const [d, m] = await Promise.all([
+        api.get("/api/admin/dashboard"),
+        api.get("/api/admin/morosos"),
+      ]);
       setData(d.data);
       setMorosos(m.data);
-    }).catch(console.error).finally(() => setLoading(false));
+      setLastUpdate(new Date());
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // ── Formato de hora de última actualización ──────────────────────────────
+  const horaActualizado = lastUpdate
+    ? lastUpdate.toLocaleTimeString("es-MX", { hour:"2-digit", minute:"2-digit", second:"2-digit" })
+    : null;
 
   if (loading) return <div className="empty"><div className="icon">📊</div><p>Cargando datos...</p></div>;
   if (!data) return (
@@ -59,13 +79,64 @@ export default function DashboardPage() {
 
   return (
     <div style={{ padding:"2rem", flex:1 }}>
-      <div className="page-title">Resumen general</div>
-      <div className="page-sub">
-        {data.totalResidentes} residentes · {data.morosos} morosos ({pct}%) · Deuda {fmtMXN(data.totalDeuda)}
+
+      {/* ── Encabezado con botón de actualizar ── */}
+      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:"0.25rem" }}>
+        <div>
+          <div className="page-title">Resumen general</div>
+          <div className="page-sub">
+            {data.totalResidentes} residentes · {data.morosos} morosos ({pct}%) · Deuda {fmtMXN(data.totalDeuda)}
+          </div>
+        </div>
+
+        {/* Botón actualizar */}
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4 }}>
+          <button
+            onClick={() => fetchAll(true)}
+            disabled={refreshing}
+            style={{
+              display:        "flex",
+              alignItems:     "center",
+              gap:            6,
+              padding:        "6px 14px",
+              borderRadius:   8,
+              border:         "1px solid var(--border)",
+              background:     refreshing ? "var(--bg2)" : "var(--bg)",
+              color:          "var(--text2)",
+              fontSize:       13,
+              fontWeight:     500,
+              cursor:         refreshing ? "not-allowed" : "pointer",
+              transition:     "all 0.15s",
+            }}
+            title="Vuelve a cargar residentes, pagos y finanzas desde la base de datos"
+          >
+            <span
+              style={{
+                display:       "inline-block",
+                fontSize:      15,
+                lineHeight:    1,
+                animation:     refreshing ? "spin 0.8s linear infinite" : "none",
+              }}
+            >
+              🔄
+            </span>
+            {refreshing ? "Actualizando…" : "Actualizar"}
+          </button>
+          {horaActualizado && (
+            <span style={{ fontSize:11, color:"var(--text3)" }}>
+              Último: {horaActualizado}
+            </span>
+          )}
+        </div>
       </div>
 
+      {/* Animación del ícono giratorio */}
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
+
       {/* ── Fila 1: Residentes ── */}
-      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8, marginTop:"1.25rem" }}>
         <div style={{ fontSize:12,fontWeight:600,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.06em" }}>Residentes</div>
         <div style={{ flex:1, height:1, background:"var(--border)" }}/>
       </div>
