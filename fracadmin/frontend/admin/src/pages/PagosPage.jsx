@@ -19,6 +19,7 @@ export default function PagosPage() {
   const [imgModal, setImgModal] = useState(null);
   const [imgLoading, setImgLoading] = useState(false);
   const [toast, setToast]       = useState(null);
+  const [editMonto, setEditMonto] = useState(null); // { id, monto } pago siendo editado
 
   const showToast = (msg, ok = true) => {
     setToast({ msg, ok });
@@ -35,11 +36,12 @@ export default function PagosPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const approve = async (id) => {
+  const approve = async (id, montoOverride) => {
     setActionId(id);
     try {
-      await api.patch(`/api/payments/${id}/approve`);
+      await api.patch(`/api/payments/${id}/approve`, montoOverride ? { monto: montoOverride } : {});
       showToast("✓ Pago aprobado · Notificación WhatsApp enviada");
+      setEditMonto(null);
       load();
     } catch (err) {
       showToast(err.response?.data?.error || "Error al aprobar", false);
@@ -154,8 +156,24 @@ export default function PagosPage() {
                     <td style={{ fontSize:12, whiteSpace:"nowrap" }}>
                       {mesLabel(p.mes, p.anio)}
                     </td>
-                    <td style={{ textAlign:"right", fontWeight:600, color:"var(--blue)" }}>
-                      {fmtMXN(p.monto)}
+                    <td style={{ textAlign:"right" }}>
+                      <div style={{ fontWeight:600, color: Number(p.monto) !== 400 ? "var(--amber)" : "var(--blue)" }}>
+                        {fmtMXN(p.monto)}
+                        {Number(p.monto) !== 400 && (
+                          <span style={{ fontSize:10, marginLeft:4, color:"var(--amber)", fontWeight:500 }}>
+                            ≠ $400
+                          </span>
+                        )}
+                      </div>
+                      {tab === "pendiente" && (
+                        <button
+                          onClick={() => setEditMonto({ id: p.id, monto: String(p.monto) })}
+                          style={{ fontSize:10, color:"var(--text3)", background:"none", border:"none",
+                                   cursor:"pointer", padding:"2px 0", textDecoration:"underline",
+                                   fontFamily:"inherit", display:"block", marginTop:2 }}>
+                          ✏️ Editar monto
+                        </button>
+                      )}
                     </td>
                     <td>
                       {p.comprobante_url ? (
@@ -199,6 +217,58 @@ export default function PagosPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal editar monto ── */}
+      {editMonto && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.35)", zIndex:50,
+                      display:"flex", alignItems:"center", justifyContent:"center", padding:"1rem" }}>
+          <div style={{ background:"var(--surface)", borderRadius:"var(--radius-lg)", padding:"1.5rem",
+                        width:"100%", maxWidth:380, boxShadow:"0 8px 32px rgba(0,0,0,0.18)" }}>
+            <div style={{ fontSize:16, fontWeight:600, marginBottom:6 }}>Ajustar monto del pago</div>
+            <p style={{ fontSize:13, color:"var(--text2)", marginBottom:14 }}>
+              El residente indicó <strong>{fmtMXN(pagos.find(p=>p.id===editMonto.id)?.monto)}</strong>.
+              Puedes corregirlo antes de aprobar si el comprobante muestra otra cantidad.
+            </p>
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:11, fontWeight:600, color:"var(--text2)", marginBottom:6 }}>
+                Monto real (MXN)
+              </div>
+              <input
+                type="number" min="1" step="1"
+                value={editMonto.monto}
+                onChange={e => setEditMonto(prev => ({ ...prev, monto: e.target.value }))}
+                autoFocus
+                style={{ width:"100%", padding:"9px 12px", borderRadius:"var(--radius)",
+                         border:"1.5px solid var(--blue)", fontSize:16, fontWeight:600,
+                         outline:"none", fontFamily:"inherit", boxSizing:"border-box" }}
+              />
+              <div style={{ display:"flex", gap:8, marginTop:8 }}>
+                {[350, 375, 400].map(v => (
+                  <button key={v} type="button"
+                    onClick={() => setEditMonto(prev => ({ ...prev, monto: String(v) }))}
+                    style={{ flex:1, padding:"6px 0", borderRadius:7, border:"1px solid var(--border2)",
+                             background: String(editMonto.monto)===String(v) ? "var(--blue)" : "var(--surface2)",
+                             color: String(editMonto.monto)===String(v) ? "#fff" : "var(--text2)",
+                             cursor:"pointer", fontSize:13, fontWeight:600, fontFamily:"inherit" }}>
+                    ${v}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button className="btn" style={{ flex:1, justifyContent:"center" }}
+                      onClick={() => setEditMonto(null)}>
+                Cancelar
+              </button>
+              <button className="btn green" style={{ flex:1, justifyContent:"center" }}
+                      disabled={!editMonto.monto || Number(editMonto.monto) <= 0 || actionId === editMonto.id}
+                      onClick={() => approve(editMonto.id, Number(editMonto.monto))}>
+                {actionId === editMonto.id ? "Aprobando..." : "✓ Aprobar con este monto"}
+              </button>
+            </div>
           </div>
         </div>
       )}

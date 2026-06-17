@@ -99,6 +99,7 @@ router.get("/:id/comprobante", requireAuth, async (req, res) => {
 });
 
 // PATCH /api/payments/:id/approve
+// Acepta opcionalmente { monto } en el body para corregir el monto antes de aprobar.
 router.patch("/:id/approve", requireAuth, async (req, res) => {
   const { id } = req.params;
   const client = await pool.connect();
@@ -110,34 +111,48 @@ router.patch("/:id/approve", requireAuth, async (req, res) => {
     if (!pago) return res.status(404).json({ error: "Pago no encontrado" });
     if (pago.status !== "pendiente") return res.status(400).json({ error: "Ya fue revisado" });
 
-    // Validación de monto mínimo
-    if (Number(pago.monto) < MONTO_MINIMO) {
+    // Si el admin envió un monto corregido, usarlo; si no, usar el del residente
+    const montoFinal = req.body.monto ? Number(req.body.monto) : Number(pago.monto);
+
+    // Validación de monto mínimo sobre el monto final
+    if (montoFinal < MONTO_MINIMO) {
       await client.query("ROLLBACK");
       return res.status(400).json({
-        error: `El monto ($${Number(pago.monto)}) es menor al mínimo requerido de $${MONTO_MINIMO} MXN`
+        error: `El monto ($${montoFinal}) es menor al mínimo requerido de $${MONTO_MINIMO} MXN`
       });
+    }
+
+    // Actualizar monto en la submission si fue corregido
+    if (req.body.monto && montoFinal !== Number(pago.monto)) {
+      await client.query(
+        "UPDATE payment_submissions SET monto=$1 WHERE id=$2",
+        [montoFinal, id]
+      );
     }
 
     await client.query(`
       UPDATE payment_submissions SET status='aprobado', reviewed_by=$1, reviewed_at=NOW() WHERE id=$2
     `, [req.admin.id, id]);
 
-    // Aplicar al residente
+    // Aplicar al residente con el monto final
     if (pago.resident_id) {
       const mesIdx = Number(pago.mes) - 1;
       const campo  = String(pago.anio) === "2025" ? "pagos25" : "pagos26";
       await client.query(`
         UPDATE residents SET ${campo}=jsonb_set(${campo},$1,$2::jsonb,true), updated_at=NOW() WHERE id=$3
-      `, [`{${mesIdx}}`, JSON.stringify(Number(pago.monto)), pago.resident_id]);
+      `, [`{${mesIdx}}`, JSON.stringify(montoFinal), pago.resident_id]);
     }
 
-    // ── Auto-registrar en Finanzas ─────────────────────────────
+    // ── Auto-registrar en Finanzas con el monto final ──────────
     const mesNombre = MESES_NOMBRES[Number(pago.mes) - 1] || pago.mes;
     const catRes = await client.query(
       "SELECT id FROM finanzas_categorias WHERE nombre='Cuotas residentes' LIMIT 1"
     );
     const catId = catRes.rows[0]?.id || null;
     const fechaPago = `${pago.anio}-${String(pago.mes).padStart(2,"0")}-05`;
+    const notaMonto = montoFinal !== Number(pago.monto)
+      ? ` · Monto ajustado de $${pago.monto} a $${montoFinal}`
+      : "";
 
     await client.query(`
       INSERT INTO finanzas_movimientos (fecha, tipo, concepto, monto, categoria_id, notas)
@@ -145,9 +160,9 @@ router.patch("/:id/approve", requireAuth, async (req, res) => {
     `, [
       fechaPago,
       `Cuota ${mesNombre} ${pago.anio} — ${pago.nombre}`,
-      Number(pago.monto),
+      montoFinal,
       catId,
-      `Aprobado por admin · ${pago.calle||""} L${pago.lote||"?"} · Folio #${id}`,
+      `Aprobado por admin · ${pago.calle||""} L${pago.lote||"?"} · Folio #${id}${notaMonto}`,
     ]);
 
     await client.query("COMMIT");
