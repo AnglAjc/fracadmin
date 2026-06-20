@@ -151,10 +151,31 @@ function Paso1({ form, setF, searchResults, searching, onSelectResident, onNext,
 }
 
 // ── Paso 2: Propiedades con meses por propiedad ────────────────
-function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, onBack, error }) {
+function Paso2({ propiedades, setPropiedades, residenteOpciones, form, locations, onNext, onBack, error }) {
   const opciones2026 = getMeses2026();
   const [propActiva, setPropActiva] = useState(0);
   const fileRefs = useRef({});
+
+  // Manzanas válidas para la calle seleccionada (orden numérico cuando aplica)
+  const mzasPara = (calle) => {
+    if (!calle) return [];
+    const set = new Set(
+      locations.filter(l => l.calle === calle && l.mza).map(l => l.mza)
+    );
+    return [...set].sort((a,b)=> (Number(a)-Number(b)) || a.localeCompare(b));
+  };
+
+  // Lotes válidos para la calle + manzana seleccionadas
+  const lotesPara = (calle, mza) => {
+    if (!calle) return [];
+    const set = new Set(
+      locations
+        .filter(l => l.calle === calle && (!mza || l.mza === mza))
+        .map(l => l.lote)
+        .filter(Boolean)
+    );
+    return [...set].sort((a,b)=> (Number(a)-Number(b)) || a.localeCompare(b));
+  };
 
   const addProp = () => {
     const propIds = propiedades.map(p=>p.resident_id).filter(Boolean);
@@ -311,20 +332,40 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, onNext, o
             <div>
               <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:4}}>Calle *</div>
               <select style={{...inp,cursor:"pointer"}} value={prop.calle}
-                      onChange={e=>{updateProp(propActiva,"calle",e.target.value);autofillProp(propActiva,e.target.value,prop.lote,prop.mza);}}>
+                      onChange={e=>{
+                        const calle = e.target.value;
+                        // Al cambiar de calle, reiniciamos manzana y lote (ya no son válidos)
+                        setPropiedades(prev=>prev.map((p,i)=>i===propActiva?{...p,calle,mza:"",lote:""}:p));
+                      }}>
                 <option value="">Calle...</option>
                 {CALLES.map(c=><option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
-              <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:4}}>Casa *</div>
-              <input style={inp} autoComplete="off" value={prop.lote} placeholder="Ej: 12"
-                     onChange={e=>{updateProp(propActiva,"lote",e.target.value);autofillProp(propActiva,prop.calle,e.target.value,prop.mza);}}/>
+              <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:4}}>Manzana</div>
+              <select style={{...inp,cursor:prop.calle?"pointer":"not-allowed"}} value={prop.mza}
+                      disabled={!prop.calle}
+                      onChange={e=>{
+                        const mza = e.target.value;
+                        // Al cambiar de manzana, reiniciamos el lote
+                        setPropiedades(prev=>prev.map((p,i)=>i===propActiva?{...p,mza,lote:""}:p));
+                      }}>
+                <option value="">{prop.calle?"Manzana...":"Elige calle primero"}</option>
+                {mzasPara(prop.calle).map(m=><option key={m} value={m}>{m}</option>)}
+              </select>
             </div>
             <div>
-              <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:4}}>Manzana</div>
-              <input style={inp} autoComplete="off" value={prop.mza} placeholder="Ej: 3"
-                     onChange={e=>{updateProp(propActiva,"mza",e.target.value);autofillProp(propActiva,prop.calle,prop.lote,e.target.value);}}/>
+              <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",marginBottom:4}}>Casa *</div>
+              <select style={{...inp,cursor:prop.calle?"pointer":"not-allowed"}} value={prop.lote}
+                      disabled={!prop.calle}
+                      onChange={e=>{
+                        const lote = e.target.value;
+                        updateProp(propActiva,"lote",lote);
+                        autofillProp(propActiva,prop.calle,lote,prop.mza);
+                      }}>
+                <option value="">{prop.calle?"Casa...":"Elige calle primero"}</option>
+                {lotesPara(prop.calle,prop.mza).map(l=><option key={l} value={l}>{l}</option>)}
+              </select>
             </div>
           </div>
 
@@ -566,6 +607,14 @@ export default function App() {
   const [searching, setSearching]   = useState(false);
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState("");
+  const [locations, setLocations]   = useState([]); // domicilios válidos {calle,mza,lote} para dropdowns
+
+  // Cargar domicilios válidos una sola vez al iniciar el formulario
+  useEffect(() => {
+    axios.get(`${API}/api/residents/locations`)
+      .then(({ data }) => setLocations(Array.isArray(data) ? data : []))
+      .catch(() => setLocations([]));
+  }, []);
 
   const searchTimer = useRef(null);
   const telefonoAutoRef = useRef(""); // rastrea el último teléfono autorellenado
@@ -782,6 +831,7 @@ export default function App() {
           {pasoActual===2&&(
             <Paso2 propiedades={propiedades} setPropiedades={setPropiedades}
                    residenteOpciones={residenteOpciones} form={form}
+                   locations={locations}
                    onNext={handleNext} onBack={()=>{setError("");setPasoActual(1);}} error={error}/>
           )}
           {pasoActual===3&&(

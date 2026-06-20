@@ -38,6 +38,24 @@ router.get("/search", async (req, res) => {
   }
 });
 
+// GET /api/residents/locations
+// Devuelve la lista pública de domicilios válidos (calle, mza, lote)
+// para poblar los dropdowns del formulario y evitar que los residentes
+// capturen direcciones que no existen.
+router.get("/locations", async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT DISTINCT calle, mza, lote
+      FROM residents
+      ORDER BY calle, mza, lote
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("[residents/locations]", err.message);
+    res.status(500).json({ error: "Error al obtener domicilios" });
+  }
+});
+
 // GET /api/residents/by-location
 // Si hay más de un residente en esa dirección (mismo lote, diferente mza),
 // devuelve todos para que el frontend muestre un selector.
