@@ -7,17 +7,18 @@ const MESES_FULL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
 
 // POST /api/residents — crear residente
 router.post("/", requireAuth, async (req, res) => {
-  const { calle, lote, mza, residente, pagos25, pagos26, deuda_extra, telefono } = req.body;
+  const { calle, lote, mza, residente, pagos25, pagos26, deuda_extra, telefono, tags } = req.body;
   if (!calle || !lote || !mza || !residente)
     return res.status(400).json({ error: "calle, lote, mza y residente son requeridos" });
   const id = `${calle.toUpperCase()}-${lote}-${mza}-${Date.now()}`;
   try {
     const { rows } = await pool.query(`
-      INSERT INTO residents (id, calle, lote, mza, residente, pagos25, pagos26, deuda_extra, telefono)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
+      INSERT INTO residents (id, calle, lote, mza, residente, pagos25, pagos26, deuda_extra, telefono, tags)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
     `, [id, calle.toUpperCase(), lote, mza, residente,
         JSON.stringify(pagos25 || {}), JSON.stringify(pagos26 || {}),
-        Number(deuda_extra || 0), telefono || null]);
+        Number(deuda_extra || 0), telefono || null,
+        Array.isArray(tags) ? tags : []]);
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error("[residents POST]", err.message);
@@ -27,7 +28,7 @@ router.post("/", requireAuth, async (req, res) => {
 
 // PATCH /api/residents/:id — editar residente
 router.patch("/:id", requireAuth, async (req, res) => {
-  const { calle, lote, mza, residente, deuda_extra, telefono, pagos25, pagos26, pausado } = req.body;
+  const { calle, lote, mza, residente, deuda_extra, telefono, pagos25, pagos26, pausado, tags } = req.body;
   try {
     const fields = [], vals = [];
     const push = (col, val) => { vals.push(val); fields.push(`${col} = $${vals.length}`); };
@@ -40,6 +41,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
     if (pagos25    != null) push("pagos25",     JSON.stringify(pagos25));
     if (pagos26    != null) push("pagos26",     JSON.stringify(pagos26));
     if (pausado    != null) push("pausado",     pausado);
+    if (tags       != null) push("tags",        Array.isArray(tags) ? tags : []);
     if (fields.length === 0) return res.status(400).json({ error: "Nada que actualizar" });
     push("updated_at", new Date());
     vals.push(req.params.id);
@@ -67,17 +69,6 @@ router.delete("/:id", requireAuth, async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // PATCH /api/residents/:id/toggle-pago
-// Registra o deshace un pago manualmente y sincroniza con finanzas.
-//
-// Correcciones vs versión anterior:
-//   1. Al "deshacer" se guarda "pendiente" en el slot (antes quedaba null,
-//      que calcDeuda también contaba como deuda — comportamiento correcto —
-//      pero el slot quedaba sucio en la BD sin un estado claro).
-//   2. El valor guardado en el slot cuando se paga es siempre el monto
-//      numérico real (correcto desde antes), para que calcDeuda pueda
-//      detectar pagos parciales y cobrar la diferencia.
-//   3. La búsqueda del movimiento duplicado en finanzas usa ILIKE con el
-//      patrón corregido para que coincida aunque el monto sea distinto a 400.
 // ---------------------------------------------------------------------------
 router.patch("/:id/toggle-pago", requireAuth, async (req, res) => {
   const { anio, mes, accion, monto, metodo } = req.body;
@@ -89,15 +80,12 @@ router.patch("/:id/toggle-pago", requireAuth, async (req, res) => {
   const montoNum = Number(monto) || CUOTA_DEFAULT;
   const metodoStr = metodo || "efectivo";
 
-  // Al pagar → guarda el monto numérico real (permite detectar pagos parciales)
-  // Al deshacer → guarda "pendiente" explícitamente (estado limpio en BD)
   const valorSlot = accion === "pagar" ? montoNum : "pendiente";
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // 1. Actualizar el slot de pagos del residente
     const { rows } = await client.query(
       `UPDATE residents
          SET ${campo} = jsonb_set(${campo}, $1, $2::jsonb, true),
@@ -115,17 +103,14 @@ router.patch("/:id/toggle-pago", requireAuth, async (req, res) => {
     const mesNombre   = MESES_FULL[mesIdx] || `Mes ${mesIdx + 1}`;
     const fechaPago   = `${anio}-${String(mesIdx + 1).padStart(2, "0")}-05`;
     const nombreCorto = residente.residente.split("/")[0].trim();
-    // Patrón de búsqueda para identificar el movimiento en finanzas
     const patronConcepto = `%${nombreCorto}%${mesNombre} ${anio}%`;
 
     if (accion === "pagar") {
-      // ── Categoría ──────────────────────────────────────────────────────────
       const catRes = await client.query(
         "SELECT id FROM finanzas_categorias WHERE nombre='Cuotas residentes' LIMIT 1"
       );
       const catId = catRes.rows[0]?.id || null;
 
-      // ── Evitar duplicado en finanzas ───────────────────────────────────────
       const exists = await client.query(`
         SELECT id FROM finanzas_movimientos
         WHERE concepto ILIKE $1 AND fecha = $2 AND tipo = 'ingreso'
@@ -133,7 +118,6 @@ router.patch("/:id/toggle-pago", requireAuth, async (req, res) => {
       `, [patronConcepto, fechaPago]);
 
       if (exists.rows.length === 0) {
-        // ── Cuenta según método de pago ────────────────────────────────────
         const cuentaTipo = metodoStr === "debito" ? "debito" : "efectivo";
         const cuentaRes  = await client.query(
           "SELECT id FROM finanzas_cuentas WHERE tipo=$1 ORDER BY id LIMIT 1",
@@ -155,7 +139,6 @@ router.patch("/:id/toggle-pago", requireAuth, async (req, res) => {
         ]);
       }
     } else {
-      // ── Deshacer: eliminar el movimiento de finanzas creado manualmente ───
       await client.query(`
         DELETE FROM finanzas_movimientos
         WHERE concepto ILIKE $1
