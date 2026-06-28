@@ -369,16 +369,28 @@ function HistorialModal({ residentId, onClose }) {
 function ResidentModal({ resident, onClose, onSaved }) {
   const isEdit=!!resident?.id;
   const [form,setForm]=useState({ calle:resident?.calle||"",lote:resident?.lote||"",mza:resident?.mza||"",residente:resident?.residente||"",telefono:resident?.telefono||"",deuda_extra:resident?.deuda_extra!=null?String(resident.deuda_extra):"0",pausado:resident?.pausado||false });
+  const [tags,setTags]=useState(resident?.tags||[]);
+  const [tagInput,setTagInput]=useState("");
   const [loading,setLoading]=useState(false); const [error,setError]=useState("");
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const IS={ width:"100%",padding:"8px 10px",borderRadius:6,border:"0.5px solid var(--border2)",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box" };
   const LS={ display:"block",fontSize:11,fontWeight:500,color:"var(--text2)",marginBottom:5 };
+
+  const addTag = () => {
+    const t = tagInput.trim().toLowerCase();
+    if (!t || tags.includes(t)) { setTagInput(""); return; }
+    setTags(prev => [...prev, t]);
+    setTagInput("");
+  };
+  const removeTag = (t) => setTags(prev => prev.filter(x => x !== t));
+  const onTagKey = (e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(); } };
+
   const handleSave=async()=>{
     if(!form.calle||!form.lote||!form.mza||!form.residente) return setError("Calle, lote, manzana y nombre son requeridos");
     setLoading(true); setError("");
     try {
-      if(isEdit) await api.patch(`/api/residents/${resident.id}`,{...form,deuda_extra:Number(form.deuda_extra)||0});
-      else await api.post("/api/residents",{...form,deuda_extra:Number(form.deuda_extra)||0,pagos25:{},pagos26:{}});
+      if(isEdit) await api.patch(`/api/residents/${resident.id}`,{...form,deuda_extra:Number(form.deuda_extra)||0,tags});
+      else await api.post("/api/residents",{...form,deuda_extra:Number(form.deuda_extra)||0,pagos25:{},pagos26:{},tags});
       onSaved();
     } catch(err){ setError(err.response?.data?.error||"Error al guardar"); } finally{setLoading(false);}
   };
@@ -395,6 +407,34 @@ function ResidentModal({ resident, onClose, onSaved }) {
         </div>
         <div style={{marginBottom:12}}><label style={LS}>Nombre del residente *</label><input style={IS} autoComplete="off" value={form.residente} onChange={e=>set("residente",e.target.value)} placeholder="Nombre completo"/></div>
         <div style={{marginBottom:12}}><label style={LS}>Deuda extra (MXN)</label><input style={IS} autoComplete="off" type="number" min="0" value={form.deuda_extra} onChange={e=>set("deuda_extra",e.target.value)}/></div>
+
+        {/* ── Tags ── */}
+        <div style={{marginBottom:14}}>
+          <label style={LS}>Tags / Identificadores</label>
+          {tags.length > 0 && (
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+              {tags.map(t=>(
+                <span key={t} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 10px",borderRadius:20,background:"var(--blue-bg)",color:"var(--blue-text)",fontSize:12,fontWeight:500}}>
+                  {t}
+                  <button type="button" onClick={()=>removeTag(t)} style={{background:"none",border:"none",cursor:"pointer",color:"inherit",padding:0,lineHeight:1,fontSize:14,opacity:0.7}}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div style={{display:"flex",gap:6}}>
+            <input
+              style={{...IS,flex:1}}
+              value={tagInput}
+              onChange={e=>setTagInput(e.target.value)}
+              onKeyDown={onTagKey}
+              placeholder="Escribe un tag y presiona Enter"
+              autoComplete="off"
+            />
+            <button type="button" className="btn" onClick={addTag} style={{flexShrink:0,padding:"8px 14px",fontSize:13}}>+ Agregar</button>
+          </div>
+          <div style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Ej: lote-rentado, moroso-reincidente, acceso-restringido</div>
+        </div>
+
         <div style={{marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:"var(--surface2)",borderRadius:8}}>
           <div>
             <div style={{fontSize:13,fontWeight:500}}>⏸ Pausar propiedad</div>
@@ -490,6 +530,11 @@ export default function ResidentesPage() {
             <div>
               <div className="name">{selected.residente.split("/")[0].trim()}</div>
               <div className="meta">{selected.calle} · Lote {selected.lote} · Mza {selected.mza}{selected.telefono?` · ${selected.telefono}`:""}</div>
+              {selected.tags&&selected.tags.length>0&&(
+                <div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:6}}>
+                  {selected.tags.map(t=><span key={t} style={{padding:"2px 10px",borderRadius:20,background:"var(--blue-bg)",color:"var(--blue-text)",fontSize:11,fontWeight:500}}>{t}</span>)}
+                </div>
+              )}
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
               <span className={badgeCls(statusOf(calcDeuda(selected)))}>{badgeLbl(statusOf(calcDeuda(selected)))}</span>
@@ -533,7 +578,7 @@ export default function ResidentesPage() {
 
       <div className="card" style={{marginBottom:0}}>
         <table>
-          <thead><tr><th>Residente</th><th>Calle</th><th>Lote / Mza</th><th>Teléfono</th><th>Estado</th><th style={{textAlign:"right"}}>Deuda</th><th></th></tr></thead>
+          <thead><tr><th>Residente</th><th>Calle</th><th>Lote / Mza</th><th>Teléfono</th><th>Tags</th><th>Estado</th><th style={{textAlign:"right"}}>Deuda</th><th></th></tr></thead>
           <tbody>
             {loading?<tr><td colSpan="7" style={{textAlign:"center",padding:"3rem",color:"var(--text2)"}}>Cargando...</td></tr>
             :filtered.length===0?<tr><td colSpan="7" style={{textAlign:"center",padding:"3rem",color:"var(--text2)"}}>Sin resultados</td></tr>
@@ -545,6 +590,11 @@ export default function ResidentesPage() {
                   <td style={{color:"var(--text2)"}}>{r.calle}</td>
                   <td style={{color:"var(--text3)"}}>L{r.lote} · Mza {r.mza}</td>
                   <td style={{color:"var(--text3)",fontSize:12}}>{r.telefono||"—"}</td>
+                  <td>
+                    {r.tags&&r.tags.length>0
+                      ? <div style={{display:"flex",flexWrap:"wrap",gap:3}}>{r.tags.map(t=><span key={t} style={{padding:"2px 8px",borderRadius:20,background:"var(--blue-bg)",color:"var(--blue-text)",fontSize:11,fontWeight:500}}>{t}</span>)}</div>
+                      : <span style={{color:"var(--text3)",fontSize:12}}>—</span>}
+                  </td>
                   <td>{r.pausado?<span className="badge" style={{background:"var(--surface2)",color:"var(--text3)"}}>⏸ Pausado</span>:<span className={badgeCls(st)}>{badgeLbl(st)}</span>}</td>
                   <td style={{textAlign:"right",fontWeight:600,color:d>0?"var(--red)":"var(--green)"}}>{d>0?fmtMXN(d):"—"}</td>
                   <td>

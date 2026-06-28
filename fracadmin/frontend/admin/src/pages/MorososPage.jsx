@@ -89,12 +89,21 @@ export default function MorososPage() {
       startY += 2;
       doc.autoTable({
         startY: startY + 2,
-        head: [["Residente", "Lote / Mza", "Teléfono", "Deuda"]],
-        body: lista.map(r => [r.residente.split("/")[0].trim(), `L${r.lote} / Mza ${r.mza}`, r.telefono || "—", `$${Number(r.deuda).toLocaleString()}`]),
+        head: [["Residente", "Lote / Mza", "Teléfono", "Tags", "Deuda"]],
+        body: lista.map(r => [
+          r.residente.split("/")[0].trim(),
+          `L${r.lote} / Mza ${r.mza}`,
+          r.telefono || "—",
+          (r.tags && r.tags.length > 0) ? r.tags.join(", ") : "—",
+          `$${Number(r.deuda).toLocaleString()}`
+        ]),
         theme: "grid",
         headStyles: { fillColor: [230, 241, 251], textColor: [12, 68, 124], fontStyle: "bold", fontSize: 9 },
         bodyStyles: { fontSize: 9 },
-        columnStyles: { 3: { halign: "right", textColor: [163, 45, 45], fontStyle: "bold" } },
+        columnStyles: {
+          3: { textColor: [24, 95, 165], fontSize: 8 },
+          4: { halign: "right", textColor: [163, 45, 45], fontStyle: "bold" }
+        },
         margin: { left: 14, right: 14 },
       });
       startY = doc.lastAutoTable.finalY + 8;
@@ -170,6 +179,7 @@ export default function MorososPage() {
                     <tr>
                       <th>Residente</th>
                       <th>Lote</th>
+                      <th>Tags</th>
                       <th>Estado</th>
                       <th style={{ textAlign: "right" }}>Deuda</th>
                       <th></th>
@@ -180,6 +190,11 @@ export default function MorososPage() {
                       <tr key={r.id}>
                         <td style={{ fontWeight: 500 }}>{r.residente.split("/")[0].trim()}</td>
                         <td style={{ color: "var(--text2)" }}>L{r.lote}</td>
+                        <td>
+                          {r.tags && r.tags.length > 0
+                            ? <div style={{ display:"flex",flexWrap:"wrap",gap:3 }}>{r.tags.map(t=><span key={t} style={{ padding:"2px 8px",borderRadius:20,background:"var(--blue-bg)",color:"var(--blue-text)",fontSize:11,fontWeight:500 }}>{t}</span>)}</div>
+                            : <span style={{ color:"var(--text3)",fontSize:12 }}>—</span>}
+                        </td>
                         <td><span className={r.deuda > 700 ? "badge red" : "badge amber"}>{r.deuda > 700 ? "Moroso" : "Deuda leve"}</span></td>
                         <td className="right" style={{ fontWeight: 600, color: "var(--red)" }}>{fmtMXN(r.deuda)}</td>
                         <td>
