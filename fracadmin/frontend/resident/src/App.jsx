@@ -6,11 +6,16 @@ const CALLES = ["AMADA","BALVINA","MARBELLA","MANUELA","VIRGINIA"];
 const MESES_FULL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                     "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
+// Cuota mensual 2026: enero-marzo $350, abril en adelante $400
+function cuota2026(mes) {
+  return mes <= 3 ? 350 : 400;
+}
+
 // Todos los meses de 2026 (permite adelantar pagos)
 function getMeses2026() {
   const opciones = [];
   for (let m = 1; m <= 12; m++) {
-    opciones.push({ label:`${MESES_FULL[m-1]} 2026`, mes:m, anio:2026, key:`${m}-2026`, cuota:400 });
+    opciones.push({ label:`${MESES_FULL[m-1]} 2026`, mes:m, anio:2026, key:`${m}-2026`, cuota:cuota2026(m) });
   }
   return [...opciones].reverse();
 }
@@ -45,14 +50,15 @@ function calcPendientes(rd) {
   const list = [];
   // 2025: solo "pendiente" explícito (ignoramos null de 2025 por instrucción del admin)
   for (let m=0;m<12;m++) if(p25[m]==="pendiente") list.push({mes:m+1,anio:2025,key:`${m+1}-2025`,label:`${MESES_FULL[m]} 2025`,cuota:350});
-  // 2026: "pendiente" O null = debe ese mes; número < 400 = pago parcial, también aparece
+  // 2026: "pendiente" O null = debe ese mes; número < cuota del mes = pago parcial, también aparece
   for (let m=0;m<maxM26;m++) {
     const v = p26[m];
+    const cuotaMes = cuota2026(m+1);
     if (v === "pendiente" || v === null || v === undefined) {
-      list.push({mes:m+1,anio:2026,key:`${m+1}-2026`,label:`${MESES_FULL[m]} 2026`,cuota:400});
-    } else if (typeof v === "number" && v < 400) {
+      list.push({mes:m+1,anio:2026,key:`${m+1}-2026`,label:`${MESES_FULL[m]} 2026`,cuota:cuotaMes});
+    } else if (typeof v === "number" && v < cuotaMes) {
       // Pago parcial: mostrar la diferencia pendiente
-      list.push({mes:m+1,anio:2026,key:`${m+1}-2026`,label:`${MESES_FULL[m]} 2026 (parcial $${v})`,cuota:400-v});
+      list.push({mes:m+1,anio:2026,key:`${m+1}-2026`,label:`${MESES_FULL[m]} 2026 (parcial $${v})`,cuota:cuotaMes-v});
     }
   }
   return list;
@@ -540,7 +546,7 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, locations
 function Paso3({ form, propiedades, notas, setNotas, onSubmit, onBack, loading, error }) {
   const totalEnvios = propiedades.reduce((s,p)=>s+(p.calle&&p.lote?p.mesesSel.length:0),0);
   const propsValidas = propiedades.filter(p=>p.calle&&p.lote&&p.mesesSel.length>0);
-  const MONTO = 400;
+  const totalMonto = propsValidas.reduce((s,p)=>s+p.mesesSel.reduce((s2,m)=>s2+(m.cuota??400),0),0);
   const inp = {width:"100%",padding:"10px 12px",borderRadius:10,border:"0.5px solid var(--border2)",fontSize:14,background:"var(--surface)",color:"var(--text)",outline:"none",fontFamily:"inherit",boxSizing:"border-box"};
 
   return (
@@ -556,7 +562,7 @@ function Paso3({ form, propiedades, notas, setNotas, onSubmit, onBack, loading, 
             {p.mesesSel.sort((a,b)=>a.anio===b.anio?a.mes-b.mes:a.anio-b.anio).map(m=>(
               <div key={m.key} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0"}}>
                 <span>{m.label}</span>
-                <span style={{fontWeight:600}}>${MONTO}</span>
+                <span style={{fontWeight:600}}>${m.cuota??400}</span>
               </div>
             ))}
             {!p.imageBase64&&<div style={{fontSize:11,color:"var(--red)",marginTop:4}}>⚠️ Sin comprobante adjunto</div>}
@@ -564,15 +570,19 @@ function Paso3({ form, propiedades, notas, setNotas, onSubmit, onBack, loading, 
         ))}
         {totalEnvios>1&&(
           <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:14,borderTop:"0.5px solid var(--border)",paddingTop:8,marginTop:4,color:"var(--blue)"}}>
-            <span>Total</span><span>${(MONTO*totalEnvios).toLocaleString()} MXN</span>
+            <span>Total</span><span>${totalMonto.toLocaleString()} MXN</span>
           </div>
         )}
       </div>
 
       <div style={{marginBottom:14}}>
-        <label style={{display:"block",fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:7}}>💰 Monto por mes (MXN)</label>
-        <div style={{padding:"11px 13px",borderRadius:10,border:"0.5px solid var(--border2)",fontSize:15,fontWeight:700,color:"var(--blue-text)",background:"var(--blue-bg)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span>Cuota mensual fija</span>
+        <label style={{display:"block",fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:7}}>💰 Cuota mensual (MXN)</label>
+        <div style={{padding:"11px 13px",borderRadius:10,border:"0.5px solid var(--border2)",fontSize:13,fontWeight:600,color:"var(--blue-text)",background:"var(--blue-bg)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span>Enero – Marzo 2026</span>
+          <span>$350 MXN</span>
+        </div>
+        <div style={{padding:"11px 13px",borderRadius:10,border:"0.5px solid var(--border2)",fontSize:13,fontWeight:600,color:"var(--blue-text)",background:"var(--blue-bg)",display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6}}>
+          <span>Abril 2026 en adelante</span>
           <span>$400 MXN</span>
         </div>
       </div>
@@ -720,7 +730,7 @@ export default function App() {
             mza:             (prop.mza||"").trim(),
             mes:             op.mes,
             anio:            op.anio,
-            monto:           400,
+            monto:           op.cuota??400,
             comprobante_b64: prop.imageBase64||null,
             notas:           notas.trim()||null,
           })
@@ -770,13 +780,13 @@ export default function App() {
               <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:4}}>📍 {prop.calle} · L{prop.lote}</div>
               {prop.mesesSel.sort((a,b)=>a.anio===b.anio?a.mes-b.mes:a.anio-b.anio).map(m=>(
                 <div key={m.key} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0 2px 10px"}}>
-                  <span>{m.label}</span><span style={{fontWeight:600}}>$400</span>
+                  <span>{m.label}</span><span style={{fontWeight:600}}>${m.cuota??400}</span>
                 </div>
               ))}
             </div>
           ))}
           <div style={{borderTop:"0.5px solid var(--border)",marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:13,color:"var(--blue)"}}>
-            <span>Total</span><span>${(400*propsValidas.reduce((s,p)=>s+p.mesesSel.length,0)).toLocaleString()} MXN</span>
+            <span>Total</span><span>${propsValidas.reduce((s,p)=>s+p.mesesSel.reduce((s2,m)=>s2+(m.cuota??400),0),0).toLocaleString()} MXN</span>
           </div>
         </div>
         <button onClick={reset} style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:"var(--blue)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
