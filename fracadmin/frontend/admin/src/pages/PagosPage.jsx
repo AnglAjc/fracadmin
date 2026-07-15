@@ -80,6 +80,9 @@ export default function PagosPage() {
   };
 
   const mesLabel = (mes, anio) => `${MESES_FULL[Number(mes) - 1] || mes} ${anio}`;
+  // Cuota esperada: enero-marzo 2026 = 350, resto = 400
+  const cuotaEsperada = (mes, anio) =>
+    (Number(anio) === 2026 && Number(mes) >= 1 && Number(mes) <= 3) ? 350 : 400;
 
   return (
     <div style={{ padding: "2rem", flex: 1 }}>
@@ -157,11 +160,11 @@ export default function PagosPage() {
                       {mesLabel(p.mes, p.anio)}
                     </td>
                     <td style={{ textAlign:"right" }}>
-                      <div style={{ fontWeight:600, color: Number(p.monto) !== 400 ? "var(--amber)" : "var(--blue)" }}>
+                      <div style={{ fontWeight:600, color: Number(p.monto) !== cuotaEsperada(p.mes, p.anio) ? "var(--amber)" : "var(--blue)" }}>
                         {fmtMXN(p.monto)}
-                        {Number(p.monto) !== 400 && (
+                        {Number(p.monto) !== cuotaEsperada(p.mes, p.anio) && (
                           <span style={{ fontSize:10, marginLeft:4, color:"var(--amber)", fontWeight:500 }}>
-                            ≠ $400
+                            ≠ ${cuotaEsperada(p.mes, p.anio)}
                           </span>
                         )}
                       </div>

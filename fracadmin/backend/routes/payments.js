@@ -6,7 +6,11 @@ const whatsappSvc   = require("../services/whatsapp");
 const MESES_NOMBRES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                        "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-const MONTO_MINIMO = 400;
+// Cuota mínima esperada: enero-marzo 2026 = 350, resto = 400
+function montoMinimo(mes, anio) {
+  if (Number(anio) === 2026 && Number(mes) >= 1 && Number(mes) <= 3) return 350;
+  return 400;
+}
 
 // POST /api/payments/submit
 router.post("/submit", async (req, res) => {
@@ -108,17 +112,24 @@ router.patch("/:id/approve", requireAuth, async (req, res) => {
 
     const { rows } = await client.query("SELECT * FROM payment_submissions WHERE id=$1", [id]);
     const pago = rows[0];
-    if (!pago) return res.status(404).json({ error: "Pago no encontrado" });
-    if (pago.status !== "pendiente") return res.status(400).json({ error: "Ya fue revisado" });
+    if (!pago) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Pago no encontrado" });
+    }
+    if (pago.status !== "pendiente") {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "Ya fue revisado" });
+    }
 
     // Si el admin envió un monto corregido, usarlo; si no, usar el del residente
     const montoFinal = req.body.monto ? Number(req.body.monto) : Number(pago.monto);
 
     // Validación de monto mínimo sobre el monto final
-    if (montoFinal < MONTO_MINIMO) {
+    const minimoEsperado = montoMinimo(pago.mes, pago.anio);
+    if (montoFinal < minimoEsperado) {
       await client.query("ROLLBACK");
       return res.status(400).json({
-        error: `El monto ($${montoFinal}) es menor al mínimo requerido de $${MONTO_MINIMO} MXN`
+        error: `El monto ($${montoFinal}) es menor al mínimo requerido de $${minimoEsperado} MXN`
       });
     }
 
