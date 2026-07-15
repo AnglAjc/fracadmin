@@ -50,15 +50,12 @@ function calcPendientes(rd) {
   const list = [];
   // 2025: solo "pendiente" explícito (ignoramos null de 2025 por instrucción del admin)
   for (let m=0;m<12;m++) if(p25[m]==="pendiente") list.push({mes:m+1,anio:2025,key:`${m+1}-2025`,label:`${MESES_FULL[m]} 2025`,cuota:350});
-  // 2026: "pendiente" O null = debe ese mes; número < cuota del mes = pago parcial, también aparece
+  // 2026: "pendiente" O null = debe ese mes. Los pagos parciales (número < cuota) ya no se listan como pendientes.
   for (let m=0;m<maxM26;m++) {
     const v = p26[m];
     const cuotaMes = cuota2026(m+1);
     if (v === "pendiente" || v === null || v === undefined) {
       list.push({mes:m+1,anio:2026,key:`${m+1}-2026`,label:`${MESES_FULL[m]} 2026`,cuota:cuotaMes});
-    } else if (typeof v === "number" && v < cuotaMes) {
-      // Pago parcial: mostrar la diferencia pendiente
-      list.push({mes:m+1,anio:2026,key:`${m+1}-2026`,label:`${MESES_FULL[m]} 2026 (parcial $${v})`,cuota:cuotaMes-v});
     }
   }
   return list;
