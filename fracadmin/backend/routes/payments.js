@@ -233,13 +233,22 @@ router.patch("/:id/approve", requireAuth, async (req, res) => {
 
     // Evita duplicar el ingreso si el admin ya lo había registrado a mano
     // desde la cuadrícula del residente (mismo domicilio y mismo mes).
+    //
+    // FIX: estos comentarios estaban DENTRO del template literal del query.
+    // Postgres no reconoce `//` como comentario, así que la cadena entera
+    // llegaba con basura y reventaba con:
+    //   syntax error at or near "separador"
+    // Al fallar aquí, la transacción hacía ROLLBACK y se deshacía TODO,
+    // incluida la actualización del residente: por eso los pagos aprobados
+    // no aparecían ni en la cuadrícula ni en el historial.
+    //
+    // El separador ' ·' del final del patrón es obligatorio: sin él, '%AMADA L2%'
+    // también coincidiría con 'AMADA L2-A', 'AMADA L20' o 'AMADA L26-27'
+    // y bloquearía un ingreso legítimo de otro lote.
     const yaRegistrado = await client.query(`
       SELECT id FROM finanzas_movimientos
       WHERE tipo = 'ingreso' AND fecha = $1 AND notas ILIKE $2
       LIMIT 1
-    // El separador ' ·' del final es obligatorio: sin él, '%AMADA L2%'
-    // también coincidiría con 'AMADA L2-A', 'AMADA L20' o 'AMADA L26-27'
-    // y bloquearía un ingreso legítimo de otro lote.
     `, [fechaPago, `%${pago.calle||""} L${pago.lote||"?"} ·%`]);
 
     if (yaRegistrado.rows.length > 0) {
@@ -248,16 +257,16 @@ router.patch("/:id/approve", requireAuth, async (req, res) => {
         [` · Folio #${id}`, yaRegistrado.rows[0].id]
       );
     } else {
-    await client.query(`
-      INSERT INTO finanzas_movimientos (fecha, tipo, concepto, monto, categoria_id, notas)
-      VALUES ($1,'ingreso',$2,$3,$4,$5)
-    `, [
-      fechaPago,
-      `Cuota ${mesNombre} ${pago.anio} — ${pago.nombre}`,
-      montoFinal,
-      catId,
-      `Aprobado por admin · ${pago.calle||""} L${pago.lote||"?"} · Folio #${id}${notaMonto}`,
-    ]);
+      await client.query(`
+        INSERT INTO finanzas_movimientos (fecha, tipo, concepto, monto, categoria_id, notas)
+        VALUES ($1,'ingreso',$2,$3,$4,$5)
+      `, [
+        fechaPago,
+        `Cuota ${mesNombre} ${pago.anio} — ${pago.nombre}`,
+        montoFinal,
+        catId,
+        `Aprobado por admin · ${pago.calle||""} L${pago.lote||"?"} · Folio #${id}${notaMonto}`,
+      ]);
     }
 
     await client.query("COMMIT");
@@ -277,7 +286,11 @@ router.patch("/:id/approve", requireAuth, async (req, res) => {
     res.json({ ok: true, resident_id: residentId, monto: montoFinal });
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error("[payments/approve]", err.message);
+    // Log ampliado: err.position da el carácter exacto donde falla el SQL,
+    // err.detail y err.where ubican el contexto dentro de la transacción.
+    console.error("[payments/approve]", err.message,
+      err.position ? `| position: ${err.position}` : "",
+      err.detail   ? `| detail: ${err.detail}`     : "");
     res.status(500).json({ error: "Error al aprobar el pago" });
   } finally { client.release(); }
 });
