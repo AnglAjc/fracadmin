@@ -100,8 +100,11 @@ router.get("/", requireAuth, async (req, res) => {
              ps.calle, ps.lote, ps.mza, ps.mes, ps.anio, ps.monto,
              ps.notas, ps.status, ps.reviewed_at, ps.rejection_reason,
              ps.whatsapp_sent, ps.created_at,
-             CASE WHEN ps.comprobante_url IS NOT NULL AND ps.comprobante_url != ''
-                  THEN ps.comprobante_url ELSE NULL END AS comprobante_url,
+             -- NO devolver comprobante_url aquí: guarda la imagen en base64
+             -- (hasta 5 MB por fila) y hacía que el listado tardara enormidades.
+             -- La tabla solo necesita saber si existe; la imagen se pide
+             -- bajo demanda en GET /api/payments/:id/comprobante
+             (ps.comprobante_url IS NOT NULL AND ps.comprobante_url != '') AS tiene_comprobante,
              r.calle AS res_calle, r.lote AS res_lote,
              (r.id IS NOT NULL) AS vinculado
       FROM payment_submissions ps

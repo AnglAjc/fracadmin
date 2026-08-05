@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import api from "../lib/api";
 import { MESES_FULL, fmtMXN } from "../lib/helpers";
 
@@ -26,12 +26,24 @@ export default function PagosPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
+  // Cada carga lleva un número de secuencia. Si el usuario cambia de pestaña
+  // antes de que llegue la respuesta anterior, esa respuesta se descarta:
+  // sin esto, la petición más lenta pintaba su lista sobre la pestaña activa.
+  const reqId = useRef(0);
+
   const load = useCallback(() => {
+    const myId = ++reqId.current;
     setLoading(true);
+    setPagos([]);
+    setTotal(0);
     api.get(`/api/payments?status=${tab}&limit=100`)
-      .then(r => { setPagos(r.data.data); setTotal(r.data.total); })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .then(r => {
+        if (myId !== reqId.current) return;   // respuesta obsoleta
+        setPagos(r.data.data);
+        setTotal(r.data.total);
+      })
+      .catch(err => { if (myId === reqId.current) console.error(err); })
+      .finally(() => { if (myId === reqId.current) setLoading(false); });
   }, [tab]);
 
   useEffect(() => { load(); }, [load]);
@@ -179,7 +191,7 @@ export default function PagosPage() {
                       )}
                     </td>
                     <td>
-                      {p.comprobante_url ? (
+                      {p.tiene_comprobante ? (
                         <button className="btn" style={{ fontSize:11, padding:"4px 10px" }}
                                 onClick={() => verComprobante(p)}>
                           🖼 Ver
