@@ -114,9 +114,10 @@ router.patch("/:id/toggle-pago", requireAuth, async (req, res) => {
     // patrón anterior era `%<Nombre>%<Mes> <Año>%` (orden invertido), así que
     // el ILIKE nunca coincidía: ni el anti-duplicado ni el DELETE de
     // "deshacer pago" hacían nada. Se agrega el domicilio para no confundir
-    // a residentes con el mismo nombre en distintos lotes.
+    // a residentes con el mismo nombre en distintos lotes. El ' ·' final
+    // evita que '%MANUELA L2%' coincida con 'MANUELA L20' o 'MANUELA L2-A'.
     const patronConcepto  = `%${mesNombre} ${anio}%${nombreCorto}%`;
-    const patronDireccion = `%${residente.calle} L${residente.lote}%`;
+    const patronDireccion = `%${residente.calle} L${residente.lote} ·%`;
 
     if (accion === "pagar") {
       const catRes = await client.query(

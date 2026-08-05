@@ -234,7 +234,10 @@ router.patch("/:id/approve", requireAuth, async (req, res) => {
       SELECT id FROM finanzas_movimientos
       WHERE tipo = 'ingreso' AND fecha = $1 AND notas ILIKE $2
       LIMIT 1
-    `, [fechaPago, `%${pago.calle||""} L${pago.lote||"?"}%`]);
+    // El separador ' ·' del final es obligatorio: sin él, '%AMADA L2%'
+    // también coincidiría con 'AMADA L2-A', 'AMADA L20' o 'AMADA L26-27'
+    // y bloquearía un ingreso legítimo de otro lote.
+    `, [fechaPago, `%${pago.calle||""} L${pago.lote||"?"} ·%`]);
 
     if (yaRegistrado.rows.length > 0) {
       await client.query(
