@@ -110,7 +110,13 @@ router.patch("/:id/toggle-pago", requireAuth, async (req, res) => {
     const mesNombre   = MESES_FULL[mesIdx] || `Mes ${mesIdx + 1}`;
     const fechaPago   = `${anio}-${String(mesIdx + 1).padStart(2, "0")}-05`;
     const nombreCorto = residente.residente.split("/")[0].trim();
-    const patronConcepto = `%${nombreCorto}%${mesNombre} ${anio}%`;
+    // FIX: el concepto se guarda como "Cuota <Mes> <Año> — <Nombre>", pero el
+    // patrón anterior era `%<Nombre>%<Mes> <Año>%` (orden invertido), así que
+    // el ILIKE nunca coincidía: ni el anti-duplicado ni el DELETE de
+    // "deshacer pago" hacían nada. Se agrega el domicilio para no confundir
+    // a residentes con el mismo nombre en distintos lotes.
+    const patronConcepto  = `%${mesNombre} ${anio}%${nombreCorto}%`;
+    const patronDireccion = `%${residente.calle} L${residente.lote}%`;
 
     if (accion === "pagar") {
       const catRes = await client.query(
@@ -118,11 +124,16 @@ router.patch("/:id/toggle-pago", requireAuth, async (req, res) => {
       );
       const catId = catRes.rows[0]?.id || null;
 
+      // Anti-duplicado: mismo domicilio, mismo mes, mismo tipo.
+      // Cubre también el caso de que el pago ya se haya registrado al
+      // aprobar un comprobante.
       const exists = await client.query(`
         SELECT id FROM finanzas_movimientos
-        WHERE concepto ILIKE $1 AND fecha = $2 AND tipo = 'ingreso'
+        WHERE tipo = 'ingreso' AND fecha = $1
+          AND (concepto ILIKE $2 OR notas ILIKE $3)
+          AND notas ILIKE $3
         LIMIT 1
-      `, [patronConcepto, fechaPago]);
+      `, [fechaPago, patronConcepto, patronDireccion]);
 
       if (exists.rows.length === 0) {
         const cuentaTipo = metodoStr === "debito" ? "debito" : "efectivo";
@@ -148,11 +159,12 @@ router.patch("/:id/toggle-pago", requireAuth, async (req, res) => {
     } else {
       await client.query(`
         DELETE FROM finanzas_movimientos
-        WHERE concepto ILIKE $1
-          AND fecha    = $2
-          AND tipo     = 'ingreso'
-          AND notas ILIKE '%Registrado manualmente%'
-      `, [patronConcepto, fechaPago]);
+        WHERE tipo     = 'ingreso'
+          AND fecha    = $1
+          AND concepto ILIKE $2
+          AND notas    ILIKE $3
+          AND notas    ILIKE '%Registrado manualmente%'
+      `, [fechaPago, patronConcepto, patronDireccion]);
     }
 
     await client.query("COMMIT");

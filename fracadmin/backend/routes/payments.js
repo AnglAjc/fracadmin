@@ -228,6 +228,20 @@ router.patch("/:id/approve", requireAuth, async (req, res) => {
       ? ` · Monto ajustado de $${pago.monto} a $${montoFinal}`
       : "";
 
+    // Evita duplicar el ingreso si el admin ya lo había registrado a mano
+    // desde la cuadrícula del residente (mismo domicilio y mismo mes).
+    const yaRegistrado = await client.query(`
+      SELECT id FROM finanzas_movimientos
+      WHERE tipo = 'ingreso' AND fecha = $1 AND notas ILIKE $2
+      LIMIT 1
+    `, [fechaPago, `%${pago.calle||""} L${pago.lote||"?"}%`]);
+
+    if (yaRegistrado.rows.length > 0) {
+      await client.query(
+        "UPDATE finanzas_movimientos SET notas = notas || $1 WHERE id = $2",
+        [` · Folio #${id}`, yaRegistrado.rows[0].id]
+      );
+    } else {
     await client.query(`
       INSERT INTO finanzas_movimientos (fecha, tipo, concepto, monto, categoria_id, notas)
       VALUES ($1,'ingreso',$2,$3,$4,$5)
@@ -238,6 +252,7 @@ router.patch("/:id/approve", requireAuth, async (req, res) => {
       catId,
       `Aprobado por admin · ${pago.calle||""} L${pago.lote||"?"} · Folio #${id}${notaMonto}`,
     ]);
+    }
 
     await client.query("COMMIT");
 
