@@ -100,6 +100,12 @@ router.post("/import", requireAuth, async (req, res) => {
       // telefono desde Excel: solo usar si viene y la BD no tiene uno ya guardado
       const telefonoExcel = r.telefono || null;
 
+      // FIX: JSON.stringify(undefined) devuelve undefined y se guardaba NULL
+      // en la columna. Un pagos25/pagos26 en NULL hace que jsonb_set(...)
+      // devuelva NULL y los pagos aprobados nunca se registren.
+      const pagos25 = JSON.stringify(r.pagos25 || {});
+      const pagos26 = JSON.stringify(r.pagos26 || {});
+
       const { rows } = await client.query(`
         INSERT INTO residents (id, calle, lote, mza, residente, pagos25, pagos26, deuda_extra, telefono)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -108,8 +114,14 @@ router.post("/import", requireAuth, async (req, res) => {
           lote        = EXCLUDED.lote,
           mza         = EXCLUDED.mza,
           residente   = EXCLUDED.residente,
-          pagos25     = EXCLUDED.pagos25,
-          pagos26     = EXCLUDED.pagos26,
+          -- Si el Excel no trae pagos para ese año, conservar los que ya
+          -- están en la BD (antes se sobrescribían con NULL)
+          pagos25     = CASE WHEN EXCLUDED.pagos25 = '{}'::jsonb
+                             THEN COALESCE(residents.pagos25, '{}'::jsonb)
+                             ELSE EXCLUDED.pagos25 END,
+          pagos26     = CASE WHEN EXCLUDED.pagos26 = '{}'::jsonb
+                             THEN COALESCE(residents.pagos26, '{}'::jsonb)
+                             ELSE EXCLUDED.pagos26 END,
           deuda_extra = EXCLUDED.deuda_extra,
           -- Solo actualizar teléfono si el Excel trae uno y la BD no tiene ninguno aún
           telefono    = CASE
@@ -120,7 +132,7 @@ router.post("/import", requireAuth, async (req, res) => {
           updated_at  = NOW()
         RETURNING (xmax = 0) AS inserted
       `, [r.id, r.calle, r.lote, r.mza, r.residente,
-          JSON.stringify(r.pagos25), JSON.stringify(r.pagos26),
+          pagos25, pagos26,
           r.deudaExtra || 0, telefonoExcel]);
 
       if (rows[0].inserted) inserted++; else updated++;

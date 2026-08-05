@@ -69,6 +69,8 @@ router.delete("/:id", requireAuth, async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // PATCH /api/residents/:id/toggle-pago
+// Nota: aquí `mes` llega en base 0 (0 = Enero), a diferencia de
+// payment_submissions.mes que va en base 1 (1 = Enero).
 // ---------------------------------------------------------------------------
 router.patch("/:id/toggle-pago", requireAuth, async (req, res) => {
   const { anio, mes, accion, monto, metodo } = req.body;
@@ -80,15 +82,20 @@ router.patch("/:id/toggle-pago", requireAuth, async (req, res) => {
   const montoNum = Number(monto) || CUOTA_DEFAULT;
   const metodoStr = metodo || "efectivo";
 
+  if (!Number.isInteger(mesIdx) || mesIdx < 0 || mesIdx > 11)
+    return res.status(400).json({ error: `Mes inválido (${mes}). Se espera 0-11.` });
+
   const valorSlot = accion === "pagar" ? montoNum : "pendiente";
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
+    // FIX: COALESCE — jsonb_set(NULL, ...) devuelve NULL y dejaría el año
+    // completo del residente en NULL sin registrar el pago.
     const { rows } = await client.query(
       `UPDATE residents
-         SET ${campo} = jsonb_set(${campo}, $1, $2::jsonb, true),
+         SET ${campo} = jsonb_set(COALESCE(${campo}, '{}'::jsonb), $1, $2::jsonb, true),
              updated_at = NOW()
        WHERE id = $3
        RETURNING *`,
