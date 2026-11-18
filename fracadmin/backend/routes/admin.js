@@ -2,6 +2,7 @@ const router = require("express").Router();
 const pool   = require("../db/pool");
 const requireAuth = require("../middleware/requireAuth");
 const whatsappSvc = require("../services/whatsapp");
+const { ANIOS, campoAnio, cuotaAnio, mesesVencidos } = require("../lib/anios");
 
 // ---------------------------------------------------------------------------
 // calcDeuda — versión corregida
@@ -14,47 +15,36 @@ const whatsappSvc = require("../services/whatsapp");
 //   • Un slot "vacio" → lote desocupado, no cobra.
 //   • pausado = true → sin deuda.
 //
-// Cuotas históricas: 2025 = $350, 2026 = $400
+// Cuotas por año: ver lib/anios.js (2025 = $350, 2026 = $400, 2027 = $400)
+//
+// Meses que cuentan como deuda por año (mesesVencidos):
+//   • años anteriores al actual → los 12 meses
+//   • año actual               → hasta el mes actual, exclusive
+//   • años futuros             → ninguno (pagos adelantados)
 // ---------------------------------------------------------------------------
-function calcDeuda(r, maxMes2026) {
+function calcDeuda(r, now = new Date()) {
   if (r.pausado) return 0;
-
-  const CUOTA_25 = 350;
-  const CUOTA_26 = 400;
 
   let deuda = 0;
 
-  // ── 2025 (12 meses) ──────────────────────────────────────────────────────
-  for (let m = 0; m < 12; m++) {
-    const v = r.pagos25[m];
-    if (v === "vacio") continue;                        // desocupado
-    if (v === "pendiente" || v === null || v === undefined) {
-      deuda += CUOTA_25;                                // sin pago
-    } else if (typeof v === "number" && v < CUOTA_25) {
-      deuda += (CUOTA_25 - v);                         // pago parcial
+  for (const anio of ANIOS) {
+    const cuota  = cuotaAnio(anio);
+    const pagos  = r[campoAnio(anio)] || {};
+    const limite = mesesVencidos(anio, now);
+    for (let m = 0; m < limite; m++) {
+      const v = pagos[m];
+      if (v === "vacio") continue;                        // desocupado
+      if (v === "pendiente" || v === null || v === undefined) {
+        deuda += cuota;                                   // sin pago
+      } else if (typeof v === "number" && v < cuota) {
+        deuda += (cuota - v);                             // pago parcial
+      }
+      // v >= cuota → pagado completo, sin deuda
     }
-    // v >= CUOTA_25 → pagado completo, sin deuda
-  }
-
-  // ── 2026 (hasta el mes actual, exclusive) ────────────────────────────────
-  for (let m = 0; m < maxMes2026; m++) {
-    const v = r.pagos26[m];
-    if (v === "vacio") continue;                        // desocupado
-    if (v === "pendiente" || v === null || v === undefined) {
-      deuda += CUOTA_26;                                // sin pago
-    } else if (typeof v === "number" && v < CUOTA_26) {
-      deuda += (CUOTA_26 - v);                         // pago parcial
-    }
-    // v >= CUOTA_26 → pagado completo, sin deuda
   }
 
   deuda += Number(r.deuda_extra || 0);
   return deuda;
-}
-
-function getMaxMes2026() {
-  const now = new Date();
-  return now.getFullYear() >= 2026 ? now.getMonth() : 0;
 }
 
 // GET /api/admin/dashboard
@@ -63,7 +53,6 @@ router.get("/dashboard", requireAuth, async (req, res) => {
     const now = new Date();
     const primerDiaMes = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-01`;
     const mesActual    = now.toLocaleDateString("es-MX", { month:"long", year:"numeric" });
-    const maxMes2026   = getMaxMes2026();
 
     const [residentsRes, paymentsRes, pendingRes, finMesRes, finTotalRes, allResidents] = await Promise.all([
       pool.query("SELECT COUNT(*) FROM residents"),
@@ -81,12 +70,12 @@ router.get("/dashboard", requireAuth, async (req, res) => {
           SUM(CASE WHEN tipo='gasto'   THEN monto ELSE 0 END) AS total_gastos
         FROM finanzas_movimientos
       `),
-      pool.query("SELECT id, pagos25, pagos26, deuda_extra, pausado FROM residents"),
+      pool.query("SELECT id, pagos25, pagos26, pagos27, deuda_extra, pausado FROM residents"),
     ]);
 
     let morosos = 0, alCorriente = 0, totalDeuda = 0;
     for (const r of allResidents.rows) {
-      const deuda = calcDeuda(r, maxMes2026);
+      const deuda = calcDeuda(r);
       if (deuda > 0) morosos++; else alCorriente++;
       totalDeuda += deuda;
     }
@@ -115,9 +104,8 @@ router.get("/dashboard", requireAuth, async (req, res) => {
 router.get("/morosos", requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query("SELECT * FROM residents ORDER BY calle, mza, lote");
-    const maxMes2026 = getMaxMes2026();
     const morosos = rows
-      .map(r => ({ ...r, deuda: calcDeuda(r, maxMes2026) }))
+      .map(r => ({ ...r, deuda: calcDeuda(r) }))
       .filter(r => r.deuda > 0)
       .sort((a, b) => b.deuda - a.deuda);
     res.json(morosos);
@@ -135,7 +123,7 @@ router.post("/notify-moroso", requireAuth, async (req, res) => {
     const r = rows[0];
     if (!r)          return res.status(404).json({ error: "No encontrado" });
     if (!r.telefono) return res.status(400).json({ error: "Sin teléfono registrado" });
-    const deuda = calcDeuda(r, getMaxMes2026());
+    const deuda = calcDeuda(r);
     if (deuda === 0) return res.status(400).json({ error: "Este residente no tiene deuda" });
     const ok = await whatsappSvc.sendDebtReminder({
       telefono: r.telefono,
@@ -155,9 +143,8 @@ router.post("/notify-all-morosos", requireAuth, async (req, res) => {
     const { rows } = await pool.query(
       "SELECT * FROM residents WHERE telefono IS NOT NULL AND telefono != ''"
     );
-    const maxMes2026 = getMaxMes2026();
     const morosos = rows
-      .map(r => ({ ...r, deuda: calcDeuda(r, maxMes2026) }))
+      .map(r => ({ ...r, deuda: calcDeuda(r) }))
       .filter(r => r.deuda > 0);
 
     let enviados = 0, fallidos = 0;

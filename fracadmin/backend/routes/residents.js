@@ -64,7 +64,7 @@ router.get("/by-location", async (req, res) => {
   if (!calle || !lote) return res.json(null);
   try {
     const { rows } = await pool.query(`
-      SELECT id, calle, lote, mza, residente, telefono, pagos25, pagos26, deuda_extra
+      SELECT id, calle, lote, mza, residente, telefono, pagos25, pagos26, pagos27, deuda_extra
       FROM residents
       WHERE LOWER(TRIM(calle)) = LOWER(TRIM($1))
         AND LOWER(TRIM(lote))  ILIKE LOWER(TRIM($2)) || '%'
@@ -105,10 +105,11 @@ router.post("/import", requireAuth, async (req, res) => {
       // devuelva NULL y los pagos aprobados nunca se registren.
       const pagos25 = JSON.stringify(r.pagos25 || {});
       const pagos26 = JSON.stringify(r.pagos26 || {});
+      const pagos27 = JSON.stringify(r.pagos27 || {});
 
       const { rows } = await client.query(`
-        INSERT INTO residents (id, calle, lote, mza, residente, pagos25, pagos26, deuda_extra, telefono)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        INSERT INTO residents (id, calle, lote, mza, residente, pagos25, pagos26, pagos27, deuda_extra, telefono)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT (id) DO UPDATE SET
           calle       = EXCLUDED.calle,
           lote        = EXCLUDED.lote,
@@ -122,6 +123,9 @@ router.post("/import", requireAuth, async (req, res) => {
           pagos26     = CASE WHEN EXCLUDED.pagos26 = '{}'::jsonb
                              THEN COALESCE(residents.pagos26, '{}'::jsonb)
                              ELSE EXCLUDED.pagos26 END,
+          pagos27     = CASE WHEN EXCLUDED.pagos27 = '{}'::jsonb
+                             THEN COALESCE(residents.pagos27, '{}'::jsonb)
+                             ELSE EXCLUDED.pagos27 END,
           deuda_extra = EXCLUDED.deuda_extra,
           -- Solo actualizar teléfono si el Excel trae uno y la BD no tiene ninguno aún
           telefono    = CASE
@@ -132,7 +136,7 @@ router.post("/import", requireAuth, async (req, res) => {
           updated_at  = NOW()
         RETURNING (xmax = 0) AS inserted
       `, [r.id, r.calle, r.lote, r.mza, r.residente,
-          pagos25, pagos26,
+          pagos25, pagos26, pagos27,
           r.deudaExtra || 0, telefonoExcel]);
 
       if (rows[0].inserted) inserted++; else updated++;

@@ -1,22 +1,23 @@
 const router = require("express").Router();
 const pool   = require("../db/pool");
 const requireAuth = require("../middleware/requireAuth");
+const { campoAnio, cuotaAnio } = require("../lib/anios");
 
 const MESES_FULL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                     "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
 // POST /api/residents — crear residente
 router.post("/", requireAuth, async (req, res) => {
-  const { calle, lote, mza, residente, pagos25, pagos26, deuda_extra, telefono, tags } = req.body;
+  const { calle, lote, mza, residente, pagos25, pagos26, pagos27, deuda_extra, telefono, tags } = req.body;
   if (!calle || !lote || !mza || !residente)
     return res.status(400).json({ error: "calle, lote, mza y residente son requeridos" });
   const id = `${calle.toUpperCase()}-${lote}-${mza}-${Date.now()}`;
   try {
     const { rows } = await pool.query(`
-      INSERT INTO residents (id, calle, lote, mza, residente, pagos25, pagos26, deuda_extra, telefono, tags)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+      INSERT INTO residents (id, calle, lote, mza, residente, pagos25, pagos26, pagos27, deuda_extra, telefono, tags)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *
     `, [id, calle.toUpperCase(), lote, mza, residente,
-        JSON.stringify(pagos25 || {}), JSON.stringify(pagos26 || {}),
+        JSON.stringify(pagos25 || {}), JSON.stringify(pagos26 || {}), JSON.stringify(pagos27 || {}),
         Number(deuda_extra || 0), telefono || null,
         Array.isArray(tags) ? tags : []]);
     res.status(201).json(rows[0]);
@@ -28,7 +29,7 @@ router.post("/", requireAuth, async (req, res) => {
 
 // PATCH /api/residents/:id — editar residente
 router.patch("/:id", requireAuth, async (req, res) => {
-  const { calle, lote, mza, residente, deuda_extra, telefono, pagos25, pagos26, pausado, tags } = req.body;
+  const { calle, lote, mza, residente, deuda_extra, telefono, pagos25, pagos26, pagos27, pausado, tags } = req.body;
   try {
     const fields = [], vals = [];
     const push = (col, val) => { vals.push(val); fields.push(`${col} = $${vals.length}`); };
@@ -40,6 +41,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
     if (telefono   != null) push("telefono",    telefono);
     if (pagos25    != null) push("pagos25",     JSON.stringify(pagos25));
     if (pagos26    != null) push("pagos26",     JSON.stringify(pagos26));
+    if (pagos27    != null) push("pagos27",     JSON.stringify(pagos27));
     if (pausado    != null) push("pausado",     pausado);
     if (tags       != null) push("tags",        Array.isArray(tags) ? tags : []);
     if (fields.length === 0) return res.status(400).json({ error: "Nada que actualizar" });
@@ -76,8 +78,9 @@ router.patch("/:id/toggle-pago", requireAuth, async (req, res) => {
   const { anio, mes, accion, monto, metodo } = req.body;
   if (!anio || mes === undefined) return res.status(400).json({ error: "anio y mes requeridos" });
 
-  const CUOTA_DEFAULT = String(anio) === "2025" ? 350 : 400;
-  const campo    = String(anio) === "2025" ? "pagos25" : "pagos26";
+  const campo    = campoAnio(anio);
+  if (!campo) return res.status(400).json({ error: `Año no soportado (${anio}).` });
+  const CUOTA_DEFAULT = cuotaAnio(anio);
   const mesIdx   = Number(mes);
   const montoNum = Number(monto) || CUOTA_DEFAULT;
   const metodoStr = metodo || "efectivo";

@@ -2,21 +2,33 @@ export const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct
 export const MESES_FULL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 export const CALLES = ["AMADA","BALVINA","MARBELLA","MANUELA","VIRGINIA"];
 
+// Años de cobro soportados. Para agregar uno nuevo: columna pagosYY en la BD
+// + agregarlo aquí (y en backend/lib/anios.js y frontend/resident).
+export const ANIOS  = [2025, 2026, 2027];
+export const CUOTAS = { 2025: 350, 2026: 400, 2027: 400 };
+
+export const campoAnio = (anio) => `pagos${String(anio).slice(-2)}`;
+export const cuotaAnio = (anio) => CUOTAS[Number(anio)] ?? 400;
+
+// Meses vencidos de `anio`: año pasado → 12, año actual → mes actual, futuro → 0
+export function mesesVencidos(anio, now = new Date()) {
+  const y = now.getFullYear();
+  if (y > anio) return 12;
+  if (y === anio) return now.getMonth();
+  return 0;
+}
+
 export function calcDeuda(r) {
   let total = 0;
-  const pagos25 = r.pagos25 || {};
-  const pagos26 = r.pagos26 || {};
-
-  for (let m = 0; m < 12; m++) {
-    if (pagos25[m] === "pendiente") total += 350;
+  for (const anio of ANIOS) {
+    const pagos = r[campoAnio(anio)] || {};
+    const cuota = cuotaAnio(anio);
+    const limite = mesesVencidos(anio);
+    for (let m = 0; m < limite; m++) {
+      if (pagos[m] === "pendiente") total += cuota;
+    }
   }
   total += Number(r.deuda_extra || r.deudaExtra || 0);
-
-  const now = new Date();
-  const maxM = now.getFullYear() >= 2026 ? now.getMonth() : 0;
-  for (let m = 0; m < maxM; m++) {
-    if (pagos26[m] === "pendiente") total += 400;
-  }
   return total;
 }
 

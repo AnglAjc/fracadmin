@@ -6,18 +6,33 @@ const CALLES = ["AMADA","BALVINA","MARBELLA","MANUELA","VIRGINIA"];
 const MESES_FULL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                     "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-// Cuota mensual 2026: enero-marzo $350, abril en adelante $400
-function cuota2026(mes) {
-  return mes <= 3 ? 350 : 400;
+// Años que el residente puede pagar desde el portal (adeudos + adelantos).
+// 2025 solo aparece como adeudo explícito ("pendiente").
+const ANIOS_PAGO = [2026, 2027];
+
+// Cuota mensual: enero-marzo 2026 $350, abril 2026 en adelante $400
+function cuotaMes(anio, mes) {
+  if (anio === 2026 && mes <= 3) return 350;
+  return 400;
 }
 
-// Todos los meses de 2026 (permite adelantar pagos)
-function getMeses2026() {
+// Meses vencidos de `anio`: año pasado → 12, año actual → mes actual, futuro → 0
+function mesesVencidos(anio, now = new Date()) {
+  const y = now.getFullYear();
+  if (y > anio) return 12;
+  if (y === anio) return now.getMonth();
+  return 0;
+}
+
+const opcionMes = (anio, m) => ({ label:`${MESES_FULL[m-1]} ${anio}`, mes:m, anio, key:`${m}-${anio}`, cuota:cuotaMes(anio, m) });
+
+// Todos los meses de los años de pago (permite adelantar pagos)
+function getMesesPago() {
   const opciones = [];
-  for (let m = 1; m <= 12; m++) {
-    opciones.push({ label:`${MESES_FULL[m-1]} 2026`, mes:m, anio:2026, key:`${m}-2026`, cuota:cuota2026(m) });
+  for (const anio of [...ANIOS_PAGO].reverse()) {
+    for (let m = 12; m >= 1; m--) opciones.push(opcionMes(anio, m));
   }
-  return [...opciones].reverse();
+  return opciones;
 }
 
 async function fileToBase64(file) {
@@ -44,18 +59,18 @@ const emptyProp = () => ({ id:Date.now(), calle:"", lote:"", mza:"", resident_id
 
 function calcPendientes(rd) {
   if (!rd) return [];
-  const now = new Date();
-  const maxM26 = now.getFullYear()>=2026 ? now.getMonth() : 0;
-  const p25 = rd.pagos25||{}, p26 = rd.pagos26||{};
+  const p25 = rd.pagos25||{};
   const list = [];
   // 2025: solo "pendiente" explícito (ignoramos null de 2025 por instrucción del admin)
   for (let m=0;m<12;m++) if(p25[m]==="pendiente") list.push({mes:m+1,anio:2025,key:`${m+1}-2025`,label:`${MESES_FULL[m]} 2025`,cuota:350});
-  // 2026: "pendiente" O null = debe ese mes. Los pagos parciales (número < cuota) ya no se listan como pendientes.
-  for (let m=0;m<maxM26;m++) {
-    const v = p26[m];
-    const cuotaMes = cuota2026(m+1);
-    if (v === "pendiente" || v === null || v === undefined) {
-      list.push({mes:m+1,anio:2026,key:`${m+1}-2026`,label:`${MESES_FULL[m]} 2026`,cuota:cuotaMes});
+  // 2026 en adelante: "pendiente" O null = debe ese mes (solo meses ya vencidos).
+  // Los pagos parciales (número < cuota) ya no se listan como pendientes.
+  for (const anio of ANIOS_PAGO) {
+    const p = rd[`pagos${String(anio).slice(-2)}`]||{};
+    const limite = mesesVencidos(anio);
+    for (let m=0;m<limite;m++) {
+      const v = p[m];
+      if (v === "pendiente" || v === null || v === undefined) list.push(opcionMes(anio, m+1));
     }
   }
   return list;
@@ -63,9 +78,11 @@ function calcPendientes(rd) {
 
 function calcPagados(rd) {
   if (!rd) return new Set();
-  const p26 = rd.pagos26||{};
   const pagados = new Set();
-  for (let m=0;m<12;m++) if(typeof p26[m]==="number" && p26[m]>0) pagados.add(`${m+1}-2026`);
+  for (const anio of ANIOS_PAGO) {
+    const p = rd[`pagos${String(anio).slice(-2)}`]||{};
+    for (let m=0;m<12;m++) if(typeof p[m]==="number" && p[m]>0) pagados.add(`${m+1}-${anio}`);
+  }
   return pagados;
 }
 
@@ -155,7 +172,7 @@ function Paso1({ form, setF, searchResults, searching, onSelectResident, onNext,
 
 // ── Paso 2: Propiedades con meses por propiedad ────────────────
 function Paso2({ propiedades, setPropiedades, residenteOpciones, form, locations, onNext, onBack, error }) {
-  const opciones2026 = getMeses2026();
+  const opcionesPago = getMesesPago();
   const [propActiva, setPropActiva] = useState(0);
   const fileRefs = useRef({});
 
@@ -247,15 +264,14 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, locations
     : [];
   const esCritico = pendientes.length > 3;
   const pendientesMostrar = esCritico ? pendientes.slice(0, 3) : pendientes;
-  // Siempre mostrar los 12 meses de 2026 + pendientes de 2025, excluyendo los ya pagados
+  // Meses habilitados: adeudos de 2026+ primero (en rojo), luego el resto de
+  // meses de los años de pago sin adeudo y sin pagar (para adelantar).
+  // Los pendientes de 2025 solo se muestran en el aviso de adeudo.
   // En crítico: solo los 3 primeros pendientes se marcan en rojo
   const pagados = prop.residentData && !prop.residentData.manual ? calcPagados(prop.residentData) : new Set();
-  // Mostrar meses de 2026 excluyendo los ya pagados
-  // pendientes2026: meses con adeudo de 2026 (van primero, en rojo)
-  // resto: meses de 2026 sin adeudo y sin pagar (para adelantar)
-  const pendientes2026 = pendientes.filter(p => p.anio === 2026);
-  const resto2026 = opciones2026.filter(op => !pendientes.find(p => p.key === op.key) && !pagados.has(op.key));
-  const mesesHabilitados = [...pendientes2026, ...resto2026];
+  const pendientesPago = pendientes.filter(p => ANIOS_PAGO.includes(p.anio));
+  const restoPago = opcionesPago.filter(op => !pendientes.find(p => p.key === op.key) && !pagados.has(op.key));
+  const mesesHabilitados = [...pendientesPago, ...restoPago];
 
   const inp = {width:"100%",padding:"9px 11px",borderRadius:9,border:"0.5px solid var(--border2)",fontSize:13,background:"var(--surface)",color:"var(--text)",outline:"none",fontFamily:"inherit",boxSizing:"border-box"};
 
@@ -437,7 +453,7 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, locations
                   <span style={{fontSize:20}}>✅</span>
                   <div>
                     <div style={{fontSize:13,fontWeight:700,color:"var(--green)"}}>¡Estás al corriente!</div>
-                    <div style={{fontSize:12,color:"var(--green)",marginTop:2}}>Todos tus meses de 2026 ya están pagados. No tienes ningún mes pendiente.</div>
+                    <div style={{fontSize:12,color:"var(--green)",marginTop:2}}>Todos tus meses ya están pagados. No tienes ningún mes pendiente.</div>
                   </div>
                 </div>
               ) : (
@@ -461,12 +477,12 @@ function Paso2({ propiedades, setPropiedades, residenteOpciones, form, locations
           </>
         )}
 
-        {/* Selector de meses 2026 para propiedades manuales (sin residentData) */}
+        {/* Selector de meses para propiedades manuales (sin residentData) */}
         {(!prop.residentData || prop.residentData?.manual) && (
           <div style={{marginBottom:14}}>
-            <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:8}}>📅 Meses a pagar (2026) *</div>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:8}}>📅 Meses a pagar *</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {opciones2026.map(op=>{
+              {opcionesPago.map(op=>{
                 const sel=!!prop.mesesSel.find(m=>m.key===op.key);
                 return (
                   <button key={op.key} type="button" onClick={()=>toggleMes(propActiva,op)}
