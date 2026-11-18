@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import api from "../lib/api";
-import { calcDeuda, fmtMXN, CALLES, MESES } from "../lib/helpers";
+import { calcDeuda, fmtMXN, CALLES, MESES, ANIOS, campoAnio, cuotaAnio } from "../lib/helpers";
 
 const MESES_FULL = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const statusOf   = d => d<=0?"corriente":d<=700?"leve":"moroso";
@@ -42,8 +42,7 @@ function PayGrid({ r, onRefresh }) {
   const [saving, setSaving]   = useState(false);
   useEffect(() => { setData(r); }, [r]);
 
-  const p25 = data.pagos25 || {};
-  const p26 = data.pagos26 || {};
+  const pagosDe = (anio) => data[campoAnio(anio)] || {};
 
   const cls = (v) => {
     if (v === "vacio") return "empty";
@@ -59,11 +58,10 @@ function PayGrid({ r, onRefresh }) {
   };
 
   const handleCellClick = (anio, mes) => {
-    const p   = anio === 2025 ? p25 : p26;
-    const val = p[mes];
+    const val = pagosDe(anio)[mes];
     if (val === "vacio") return;
     const isPaid = typeof val === "number" && val > 0;
-    setMonto(isPaid ? String(val) : "400");
+    setMonto(isPaid ? String(val) : String(cuotaAnio(anio)));
     setMetodo("efectivo");
     setConfirm({
       anio, mes,
@@ -79,7 +77,7 @@ function PayGrid({ r, onRefresh }) {
     try {
       const { data: updated } = await api.patch(
         `/api/residents/${data.id}/toggle-pago`,
-        { anio: confirm.anio, mes: confirm.mes, accion: confirm.accion, monto: Number(monto) || 400, metodo }
+        { anio: confirm.anio, mes: confirm.mes, accion: confirm.accion, monto: Number(monto) || cuotaAnio(confirm.anio), metodo }
       );
       setData(updated);
       if (onRefresh) onRefresh(updated);
@@ -113,19 +111,22 @@ function PayGrid({ r, onRefresh }) {
   return (
     <>
       <div className="pay-grid scroll-x" style={{ marginTop:12 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <div className="pay-year">2025</div>
-          <div style={{ fontSize:10, color:"var(--text3)" }}>Toca ✗ para registrar · ✓ para deshacer</div>
-        </div>
-        <table>
-          <thead><tr>{MESES.map(m => <th key={m}>{m}</th>)}</tr></thead>
-          <tbody><tr>{MESES.map((_,i) => <Cell key={i} val={p25[i]} anio={2025} mes={i}/>)}</tr></tbody>
-        </table>
-        <div className="pay-year" style={{ marginTop:8 }}>2026</div>
-        <table>
-          <thead><tr>{MESES.map(m => <th key={m}>{m}</th>)}</tr></thead>
-          <tbody><tr>{MESES.map((_,i) => <Cell key={i} val={p26[i]} anio={2026} mes={i}/>)}</tr></tbody>
-        </table>
+        {ANIOS.map((anio, idx) => (
+          <div key={anio}>
+            {idx === 0 ? (
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div className="pay-year">{anio}</div>
+                <div style={{ fontSize:10, color:"var(--text3)" }}>Toca ✗ para registrar · ✓ para deshacer</div>
+              </div>
+            ) : (
+              <div className="pay-year" style={{ marginTop:8 }}>{anio}</div>
+            )}
+            <table>
+              <thead><tr>{MESES.map(m => <th key={m}>{m}</th>)}</tr></thead>
+              <tbody><tr>{MESES.map((_,i) => <Cell key={i} val={pagosDe(anio)[i]} anio={anio} mes={i}/>)}</tr></tbody>
+            </table>
+          </div>
+        ))}
       </div>
 
       {confirm && (
@@ -390,7 +391,7 @@ function ResidentModal({ resident, onClose, onSaved }) {
     setLoading(true); setError("");
     try {
       if(isEdit) await api.patch(`/api/residents/${resident.id}`,{...form,deuda_extra:Number(form.deuda_extra)||0,tags});
-      else await api.post("/api/residents",{...form,deuda_extra:Number(form.deuda_extra)||0,pagos25:{},pagos26:{},tags});
+      else await api.post("/api/residents",{...form,deuda_extra:Number(form.deuda_extra)||0,pagos25:{},pagos26:{},pagos27:{},tags});
       onSaved();
     } catch(err){ setError(err.response?.data?.error||"Error al guardar"); } finally{setLoading(false);}
   };

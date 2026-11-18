@@ -1,21 +1,18 @@
 import { useEffect, useState } from "react";
 import api from "../lib/api";
-import { fmtMXN } from "../lib/helpers";
+import { fmtMXN, ANIOS, campoAnio, mesesVencidos } from "../lib/helpers";
 
 const MESES_NOMBRES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 
 // Devuelve lista de meses pendientes legibles
 function calcMesesMoroso(r) {
-  const now = new Date();
-  const maxM26 = now.getFullYear() >= 2026 ? now.getMonth() : 0;
-  const p25 = r.pagos25 || {};
-  const p26 = r.pagos26 || {};
   const meses = [];
-  for (let m = 0; m < 12; m++) {
-    if (p25[m] === "pendiente") meses.push(`${MESES_NOMBRES[m]} 2025`);
-  }
-  for (let m = 0; m < maxM26; m++) {
-    if (p26[m] === "pendiente") meses.push(`${MESES_NOMBRES[m]} 2026`);
+  for (const anio of ANIOS) {
+    const pagos = r[campoAnio(anio)] || {};
+    const limite = mesesVencidos(anio);
+    for (let m = 0; m < limite; m++) {
+      if (pagos[m] === "pendiente") meses.push(`${MESES_NOMBRES[m]} ${anio}`);
+    }
   }
   return meses;
 }

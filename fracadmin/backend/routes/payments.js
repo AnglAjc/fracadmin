@@ -2,6 +2,7 @@ const router = require("express").Router();
 const pool   = require("../db/pool");
 const requireAuth   = require("../middleware/requireAuth");
 const whatsappSvc   = require("../services/whatsapp");
+const { campoAnio } = require("../lib/anios");
 
 const MESES_NOMBRES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                        "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -207,7 +208,11 @@ router.patch("/:id/approve", requireAuth, async (req, res) => {
       await client.query("ROLLBACK");
       return res.status(400).json({ error: `Mes inválido en el pago (${pago.mes}). Se espera 1-12.` });
     }
-    const campo = String(pago.anio) === "2025" ? "pagos25" : "pagos26";
+    const campo = campoAnio(pago.anio);
+    if (!campo) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: `Año no soportado en el pago (${pago.anio}).` });
+    }
     const upd = await client.query(`
       UPDATE residents
          SET ${campo} = jsonb_set(COALESCE(${campo}, '{}'::jsonb), $1, $2::jsonb, true),
